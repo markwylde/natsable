@@ -1,6 +1,6 @@
 {
   "name": "natsable",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "description": "A notable GUI for NATS.io with user management and client certificate management",
   "type": "module",
   "main": "src/server.ts",
