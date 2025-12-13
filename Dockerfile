@@ -2,6 +2,9 @@ FROM node:24-alpine
 
 WORKDIR /app
 
+# Install OpenSSL for certificate generation
+RUN apk add --no-cache openssl
+
 # Copy package files
 COPY package*.json ./
 
