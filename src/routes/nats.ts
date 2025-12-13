@@ -1,7 +1,8 @@
 import express, { type Request, type Response } from 'express';
 const { Router } = express;
-import nats, { type NatsConnection, type JetStreamClient } from 'nats';
+import nats, { type NatsConnection, type JetStreamClient, type ConnectionOptions } from 'nats';
 const { connect } = nats;
+import { join } from 'path';
 
 interface Varz {
   server_id: string;
@@ -150,7 +151,7 @@ interface StreamSummary {
   lastSeq: number;
 }
 
-export function createNatsRouter(monitoringUrl: string, natsUrl: string) {
+export function createNatsRouter(monitoringUrl: string, natsUrl: string, tlsEnabled: boolean, certsDir: string) {
   const router = Router();
   let nc: NatsConnection | null = null;
   let js: JetStreamClient | null = null;
@@ -158,7 +159,22 @@ export function createNatsRouter(monitoringUrl: string, natsUrl: string) {
   // Connect to NATS for KV stats
   async function getNatsConnection() {
     if (!nc || nc.isClosed()) {
-      nc = await connect({ servers: natsUrl });
+      if (tlsEnabled) {
+        // Use TLS with client certificates
+        const serverUrl = natsUrl.startsWith('tls://') ? natsUrl : `tls://${natsUrl}`;
+        const tlsOptions: ConnectionOptions = {
+          servers: serverUrl,
+          tls: {
+            caFile: join(certsDir, 'ca.crt'),
+            certFile: join(certsDir, 'admin-client.crt'),
+            keyFile: join(certsDir, 'admin-client.key'),
+          }
+        };
+        nc = await connect(tlsOptions);
+      } else {
+        // Plain connection without TLS
+        nc = await connect({ servers: natsUrl });
+      }
       js = nc.jetstream();
     }
     return { nc, js };
