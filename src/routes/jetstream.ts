@@ -67,7 +67,8 @@ export function createJetstreamRouter(natsUrl: string, certsDir: string) {
       const tlsOptions: ConnectionOptions = {
         servers: serverUrl,
         tls: {
-          caFile: join(certsDir, 'ca.crt'),
+          // Client certificates for authentication (self-signed)
+          // Server uses Let's Encrypt (verified by system CA)
           certFile: join(certsDir, 'admin-client.crt'),
           keyFile: join(certsDir, 'admin-client.key'),
         }
