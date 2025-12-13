@@ -18,9 +18,9 @@ interface ParsedConfig {
   users: NatsUser[];
 }
 
-export function createUsersRouter(configDir: string, certsDir: string) {
+export function createUsersRouter(configDir: string, certsDir: string, configFile: string = 'nats-server-dev.conf') {
   const router = Router();
-  const configPath = join(configDir, 'nats-server-dev.conf');
+  const configPath = join(configDir, configFile);
 
   // Parse NATS config file (simplified parser for user management)
   function parseNatsConfig(content: string): ParsedConfig {

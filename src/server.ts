@@ -18,6 +18,7 @@ const PORT = process.env.PORT || 3000;
 const NATS_MONITORING_URL = process.env.NATS_MONITORING_URL || 'http://localhost:8223';
 const NATS_URL = process.env.NATS_URL || 'localhost:4223';
 const NATS_TLS_ENABLED = process.env.NATS_TLS_ENABLED === 'true';
+const NATS_CONFIG_FILE = process.env.NATS_CONFIG_FILE || 'nats-server-dev.conf';
 const CERTS_DIR = process.env.CERTS_DIR || join(__dirname, '..', 'certs');
 const CONFIG_DIR = process.env.CONFIG_DIR || join(__dirname, '..', 'config');
 
@@ -38,7 +39,7 @@ app.use(authMiddleware);
 // API Routes
 app.use('/api/nats', createNatsRouter(NATS_MONITORING_URL, NATS_URL, NATS_TLS_ENABLED, CERTS_DIR));
 app.use('/api/certificates', createCertificateRouter(CERTS_DIR));
-app.use('/api/users', createUsersRouter(CONFIG_DIR, CERTS_DIR));
+app.use('/api/users', createUsersRouter(CONFIG_DIR, CERTS_DIR, NATS_CONFIG_FILE));
 app.use('/api/kv', createKvRouter(NATS_URL, CERTS_DIR));
 app.use('/api/jetstream', createJetstreamRouter(NATS_URL, CERTS_DIR));
 
