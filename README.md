@@ -10,6 +10,19 @@ A web-based GUI and management application for [NATS.io](https://nats.io/) messa
 - **Certificate Management** - Generate, view, and manage TLS client certificates
 - **User Management** - View password and certificate-based users from NATS config
 
+## Screenshots
+
+<table>
+  <tr>
+    <td><img src="screenshots/dashboard.png" alt="Dashboard" width="400"/></td>
+    <td><img src="screenshots/jetstream.png" alt="JetStream" width="400"/></td>
+  </tr>
+  <tr>
+    <td><img src="screenshots/certificates.png" alt="Certificates" width="400"/></td>
+    <td><img src="screenshots/users.png" alt="Users" width="400"/></td>
+  </tr>
+</table>
+
 ## Prerequisites
 
 - Node.js 24+
