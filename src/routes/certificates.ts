@@ -128,7 +128,9 @@ export function createCertificateRouter(certsDir: string) {
   // Create new client certificate using openssl
   router.post('/', async (req, res) => {
     try {
-      const { username, email, organization = 'Natsable', days = 365 } = req.body;
+      const { username, email, days = 365 } = req.body;
+      // Use organization if provided and non-empty, otherwise use default
+      const organization = req.body.organization?.trim() || 'Natsable';
 
       if (!username || !email) {
         return res.status(400).json({ error: 'Username and email are required' });
