@@ -160,12 +160,13 @@ export function createNatsRouter(monitoringUrl: string, natsUrl: string, tlsEnab
   async function getNatsConnection() {
     if (!nc || nc.isClosed()) {
       if (tlsEnabled) {
-        // Use TLS with client certificates
+        // Use TLS with client certificates for mTLS authentication
+        // Server uses Let's Encrypt (system CA), client certs are self-signed
         const serverUrl = natsUrl.startsWith('tls://') ? natsUrl : `tls://${natsUrl}`;
         const tlsOptions: ConnectionOptions = {
           servers: serverUrl,
           tls: {
-            caFile: join(certsDir, 'ca.crt'),
+            // Client certificates for authentication (self-signed)
             certFile: join(certsDir, 'admin-client.crt'),
             keyFile: join(certsDir, 'admin-client.key'),
           }
