@@ -1,0 +1,98 @@
+services:
+  # NATS Server with TLS and authentication
+  nats:
+    image: nats:latest
+    container_name: natsable-server
+    ports:
+      - "4223:4222"   # Client connections (mapped to 4223 to avoid conflicts)
+      - "8223:8222"   # HTTP monitoring (mapped to 8223 to avoid conflicts)
+      - "6223:6222"   # Cluster routing (if needed)
+    volumes:
+      - ./config/nats-server-dev.conf:/etc/nats/nats-server.conf:ro
+      - ./certs:/etc/nats/certs:ro
+      - nats-data:/data
+      - nats-logs:/var/log/nats
+    command: ["-c", "/etc/nats/nats-server.conf"]
+    healthcheck:
+      test: ["CMD", "nats-server", "--help"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
+    networks:
+      - natsable-network
+
+  # NATS Box - CLI tools for testing and administration
+  nats-box:
+    image: natsio/nats-box:latest
+    container_name: natsable-box
+    volumes:
+      - ./certs:/certs:ro
+    environment:
+      - NATS_URL=nats://admin:admin123@nats:4222
+      # Note: Inside the container, use port 4222 (container-to-container)
+      # From host, use port 4223
+    depends_on:
+      nats:
+        condition: service_healthy
+    stdin_open: true
+    tty: true
+    networks:
+      - natsable-network
+    profiles:
+      - tools
+
+  # NATS Surveyor - Monitoring and metrics
+  nats-surveyor:
+    image: natsio/nats-surveyor:latest
+    container_name: natsable-surveyor
+    ports:
+      - "7777:7777"   # Prometheus metrics endpoint
+    environment:
+      - NATS_SURVEYOR_SERVERS=nats://nats:4222
+      - NATS_SURVEYOR_CREDS=/certs/admin.creds
+    volumes:
+      - ./certs:/certs:ro
+    depends_on:
+      nats:
+        condition: service_healthy
+    networks:
+      - natsable-network
+    profiles:
+      - monitoring
+
+  # Natsable Web UI
+  natsable:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: natsable
+    ports:
+      - "3000:3000"
+    environment:
+      - NATS_URL=nats:4222
+      - NATS_MONITORING_URL=http://nats:8222
+      - CERTS_DIR=/app/certs
+      - CONFIG_DIR=/app/config
+      - NODE_ENV=production
+    volumes:
+      - ./certs:/app/certs:ro
+      - ./config:/app/config:ro
+    depends_on:
+      nats:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - natsable-network
+
+volumes:
+  nats-data:
+    name: natsable-data
+  nats-logs:
+    name: natsable-logs
+
+networks:
+  natsable-network:
+    name: natsable-network
+    driver: bridge

@@ -1,0 +1,4250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Natsable - NATS Management GUI</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg-primary: #0f172a;
+      --bg-secondary: #1e293b;
+      --bg-tertiary: #334155;
+      --text-primary: #f1f5f9;
+      --text-secondary: #94a3b8;
+      --accent: #22d3ee;
+      --accent-hover: #06b6d4;
+      --success: #22c55e;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --border: #475569;
+      --chart-1: #22d3ee;
+      --chart-2: #a855f7;
+      --chart-3: #22c55e;
+      --chart-4: #f59e0b;
+      --chart-5: #ef4444;
+      --chart-6: #ec4899;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      min-height: 100vh;
+    }
+
+    .app {
+      display: flex;
+      min-height: 100vh;
+    }
+
+    /* Sidebar */
+    .sidebar {
+      width: 250px;
+      background: var(--bg-secondary);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+    }
+
+    .logo {
+      padding: 20px;
+      font-size: 24px;
+      font-weight: bold;
+      color: var(--accent);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .logo svg {
+      width: 32px;
+      height: 32px;
+    }
+
+    .nav {
+      flex: 1;
+      padding: 20px 0;
+    }
+
+    .nav-item {
+      padding: 12px 20px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      color: var(--text-secondary);
+      transition: all 0.2s;
+    }
+
+    .nav-item:hover {
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
+    }
+
+    .nav-item.active {
+      background: var(--bg-tertiary);
+      color: var(--accent);
+      border-right: 3px solid var(--accent);
+    }
+
+    .nav-item svg {
+      width: 20px;
+      height: 20px;
+    }
+
+    /* Main Content */
+    .main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+
+    .header {
+      padding: 20px 30px;
+      background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .header h1 {
+      font-size: 24px;
+      font-weight: 600;
+    }
+
+    .connection-status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      background: var(--bg-tertiary);
+      border-radius: 20px;
+      font-size: 14px;
+    }
+
+    .status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--danger);
+      animation: pulse 2s infinite;
+    }
+
+    .status-dot.connected {
+      background: var(--success);
+      animation: none;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    .content {
+      flex: 1;
+      padding: 30px;
+      overflow-y: auto;
+    }
+
+    /* Cards */
+    .card {
+      background: var(--bg-secondary);
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      margin-bottom: 20px;
+    }
+
+    .card-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .card-header h2 {
+      font-size: 18px;
+      font-weight: 600;
+    }
+
+    .card-body {
+      padding: 20px;
+    }
+
+    /* Stats Grid */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .stat-card {
+      background: var(--bg-secondary);
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      padding: 16px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .stat-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: var(--accent);
+    }
+
+    .stat-card.purple::before { background: var(--chart-2); }
+    .stat-card.green::before { background: var(--chart-3); }
+    .stat-card.orange::before { background: var(--chart-4); }
+    .stat-card.red::before { background: var(--chart-5); }
+    .stat-card.pink::before { background: var(--chart-6); }
+
+    .stat-card .label {
+      font-size: 12px;
+      color: var(--text-secondary);
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .stat-card .value {
+      font-size: 24px;
+      font-weight: bold;
+      color: var(--text-primary);
+    }
+
+    .stat-card .subvalue {
+      font-size: 11px;
+      color: var(--text-secondary);
+      margin-top: 4px;
+    }
+
+    .stat-card .trend {
+      font-size: 11px;
+      margin-top: 4px;
+    }
+
+    .stat-card .trend.up { color: var(--success); }
+    .stat-card .trend.down { color: var(--danger); }
+
+    /* Charts Grid */
+    .charts-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 20px;
+      margin-bottom: 24px;
+    }
+
+    @media (max-width: 1200px) {
+      .charts-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .chart-card {
+      background: var(--bg-secondary);
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      padding: 20px;
+    }
+
+    .chart-card h3 {
+      font-size: 14px;
+      color: var(--text-secondary);
+      margin-bottom: 16px;
+      font-weight: 500;
+    }
+
+    .chart-container {
+      position: relative;
+      height: 200px;
+    }
+
+    /* Gauge Charts */
+    .gauge-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 20px;
+      margin-bottom: 24px;
+    }
+
+    .gauge-card {
+      background: var(--bg-secondary);
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      padding: 20px;
+      text-align: center;
+    }
+
+    .gauge-card h3 {
+      font-size: 14px;
+      color: var(--text-secondary);
+      margin-bottom: 16px;
+      font-weight: 500;
+    }
+
+    .gauge-container {
+      position: relative;
+      height: 150px;
+    }
+
+    .gauge-value {
+      position: absolute;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 28px;
+      font-weight: bold;
+      color: var(--text-primary);
+    }
+
+    /* Table */
+    .table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    .table th,
+    .table td {
+      padding: 12px 16px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .table th {
+      font-weight: 600;
+      color: var(--text-secondary);
+      font-size: 14px;
+      text-transform: uppercase;
+    }
+
+    .table tr:hover td {
+      background: var(--bg-tertiary);
+    }
+
+    /* Buttons */
+    .btn {
+      padding: 10px 20px;
+      border-radius: 8px;
+      border: none;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      transition: all 0.2s;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: var(--bg-primary);
+    }
+
+    .btn-primary:hover {
+      background: var(--accent-hover);
+    }
+
+    .btn-danger {
+      background: var(--danger);
+      color: white;
+    }
+
+    .btn-danger:hover {
+      opacity: 0.9;
+    }
+
+    .btn-secondary {
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
+    }
+
+    .btn-secondary:hover {
+      background: var(--border);
+    }
+
+    .btn-sm {
+      padding: 6px 12px;
+      font-size: 12px;
+    }
+
+    /* Badges */
+    .badge {
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+
+    .badge-success {
+      background: rgba(34, 197, 94, 0.2);
+      color: var(--success);
+    }
+
+    .badge-warning {
+      background: rgba(245, 158, 11, 0.2);
+      color: var(--warning);
+    }
+
+    .badge-danger {
+      background: rgba(239, 68, 68, 0.2);
+      color: var(--danger);
+    }
+
+    /* Modal */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      display: none;
+    }
+
+    .modal-overlay.show {
+      display: flex;
+    }
+
+    .modal {
+      background: var(--bg-secondary);
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      width: 100%;
+      max-width: 500px;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+
+    .modal-header {
+      padding: 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .modal-header h3 {
+      font-size: 18px;
+    }
+
+    .modal-close {
+      background: none;
+      border: none;
+      color: var(--text-secondary);
+      cursor: pointer;
+      font-size: 24px;
+    }
+
+    .modal-body {
+      padding: 20px;
+    }
+
+    .modal-footer {
+      padding: 20px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+    }
+
+    /* Form */
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    .form-group label {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 14px;
+      color: var(--text-secondary);
+    }
+
+    .form-group input,
+    .form-group select {
+      width: 100%;
+      padding: 12px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
+      font-size: 14px;
+    }
+
+    .form-group input:focus,
+    .form-group select:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+
+    /* Views */
+    .view {
+      display: none;
+    }
+
+    .view.active {
+      display: block;
+    }
+
+    /* Empty State */
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--text-secondary);
+    }
+
+    .empty-state svg {
+      width: 64px;
+      height: 64px;
+      margin-bottom: 20px;
+      opacity: 0.5;
+    }
+
+    /* Loading */
+    .loading {
+      text-align: center;
+      padding: 40px;
+      color: var(--text-secondary);
+    }
+
+    .spinner {
+      width: 40px;
+      height: 40px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 20px;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* JSON View */
+    .json-view {
+      background: var(--bg-primary);
+      border-radius: 8px;
+      padding: 16px;
+      font-family: monospace;
+      font-size: 13px;
+      overflow-x: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+
+    /* Live indicator */
+    .live-indicator {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .live-dot {
+      width: 8px;
+      height: 8px;
+      background: var(--success);
+      border-radius: 50%;
+      animation: livePulse 1.5s ease-in-out infinite;
+    }
+
+    @keyframes livePulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(0.8); }
+    }
+
+    /* Login Screen */
+    .login-screen {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: var(--bg-primary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+
+    .login-screen.hidden {
+      display: none;
+    }
+
+    .login-card {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 40px;
+      width: 100%;
+      max-width: 420px;
+      text-align: center;
+    }
+
+    .login-logo {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      margin-bottom: 32px;
+    }
+
+    .login-logo svg {
+      width: 48px;
+      height: 48px;
+      color: var(--accent);
+    }
+
+    .login-logo span {
+      font-size: 32px;
+      font-weight: bold;
+      color: var(--accent);
+    }
+
+    .login-title {
+      font-size: 20px;
+      margin-bottom: 8px;
+      color: var(--text-primary);
+    }
+
+    .login-subtitle {
+      font-size: 14px;
+      color: var(--text-secondary);
+      margin-bottom: 32px;
+    }
+
+    .file-upload-area {
+      border: 2px dashed var(--border);
+      border-radius: 12px;
+      padding: 40px 20px;
+      cursor: pointer;
+      transition: all 0.2s;
+      margin-bottom: 16px;
+    }
+
+    .file-upload-area:hover {
+      border-color: var(--accent);
+      background: rgba(34, 211, 238, 0.05);
+    }
+
+    .file-upload-area.dragover {
+      border-color: var(--accent);
+      background: rgba(34, 211, 238, 0.1);
+    }
+
+    .file-upload-area.has-file {
+      border-color: var(--success);
+      background: rgba(34, 197, 94, 0.05);
+    }
+
+    .file-upload-area svg {
+      width: 48px;
+      height: 48px;
+      color: var(--text-secondary);
+      margin-bottom: 12px;
+    }
+
+    .file-upload-area.has-file svg {
+      color: var(--success);
+    }
+
+    .file-upload-area p {
+      color: var(--text-secondary);
+      font-size: 14px;
+      margin: 0;
+    }
+
+    .file-upload-area .file-name {
+      color: var(--success);
+      font-weight: 500;
+      margin-top: 8px;
+    }
+
+    .login-error {
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid var(--danger);
+      border-radius: 8px;
+      padding: 12px;
+      color: var(--danger);
+      font-size: 14px;
+      margin-bottom: 16px;
+      display: none;
+    }
+
+    .login-error.visible {
+      display: block;
+    }
+
+    .login-btn {
+      width: 100%;
+      padding: 14px;
+      font-size: 16px;
+      font-weight: 500;
+    }
+
+    .login-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .login-help {
+      margin-top: 24px;
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    .login-help a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    .login-help a:hover {
+      text-decoration: underline;
+    }
+
+    /* User info in header */
+    .user-info {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .user-fingerprint {
+      font-size: 12px;
+      color: var(--text-secondary);
+      font-family: monospace;
+      max-width: 120px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .logout-btn {
+      padding: 6px 12px;
+      font-size: 13px;
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .logout-btn:hover {
+      background: var(--danger);
+      border-color: var(--danger);
+      color: white;
+    }
+
+    /* Dashboard cards grid */
+    .dashboard-cards {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+      margin-bottom: 24px;
+    }
+
+    .dashboard-cards > .card {
+      min-width: 0;
+    }
+
+    /* Responsive - tablet/mobile only */
+    @media (max-width: 1024px) {
+      .dashboard-cards {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 768px) {
+      .sidebar {
+        position: fixed;
+        left: -250px;
+        top: 0;
+        bottom: 0;
+        z-index: 100;
+        transition: left 0.3s;
+      }
+
+      .sidebar.open {
+        left: 0;
+      }
+
+      .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      .gauge-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- Login Screen -->
+  <div class="login-screen" id="login-screen">
+    <div class="login-card">
+      <div class="login-logo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/>
+          <circle cx="12" cy="12" r="4"/>
+          <line x1="12" y1="2" x2="12" y2="6"/>
+          <line x1="12" y1="18" x2="12" y2="22"/>
+          <line x1="2" y1="12" x2="6" y2="12"/>
+          <line x1="18" y1="12" x2="22" y2="12"/>
+        </svg>
+        <span>Natsable</span>
+      </div>
+      <h2 class="login-title">Welcome Back</h2>
+      <p class="login-subtitle">Upload your credentials file to access the dashboard</p>
+
+      <div class="login-error" id="login-error"></div>
+
+      <div class="file-upload-area" id="key-upload-area">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>
+        </svg>
+        <p>Drop your credentials file here<br>or click to browse</p>
+        <p style="font-size: 12px; color: var(--text-secondary); margin-top: 8px;">.pem file from Certificates page</p>
+        <p class="file-name" id="key-file-name" style="display: none;"></p>
+        <input type="file" id="key-file-input" accept=".pem,.key" style="display: none;">
+      </div>
+
+      <p class="login-help">
+        Need help? Contact your administrator to get your client key.
+      </p>
+    </div>
+  </div>
+
+  <div class="app">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="logo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/>
+          <circle cx="12" cy="12" r="4"/>
+          <line x1="12" y1="2" x2="12" y2="6"/>
+          <line x1="12" y1="18" x2="12" y2="22"/>
+          <line x1="2" y1="12" x2="6" y2="12"/>
+          <line x1="18" y1="12" x2="22" y2="12"/>
+        </svg>
+        Natsable
+      </div>
+      <nav class="nav">
+        <div class="nav-item active" data-view="dashboard">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="7" height="7"/>
+            <rect x="14" y="3" width="7" height="7"/>
+            <rect x="3" y="14" width="7" height="7"/>
+            <rect x="14" y="14" width="7" height="7"/>
+          </svg>
+          Dashboard
+        </div>
+        <div class="nav-item" data-view="connections">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+            <circle cx="9" cy="7" r="4"/>
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+            <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+          </svg>
+          Connections
+        </div>
+        <div class="nav-item" data-view="certificates">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+          </svg>
+          Certificates
+        </div>
+        <div class="nav-item" data-view="users">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+            <circle cx="12" cy="7" r="4"/>
+          </svg>
+          Users
+        </div>
+        <div class="nav-item" data-view="jetstream">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+          </svg>
+          JetStream
+        </div>
+        <div class="nav-item" data-view="kvstore">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M4 7V4h16v3"/>
+            <path d="M9 20h6"/>
+            <path d="M12 4v16"/>
+            <rect x="2" y="7" width="8" height="6" rx="1"/>
+            <rect x="14" y="7" width="8" height="6" rx="1"/>
+          </svg>
+          KV Store
+        </div>
+        <div class="nav-item" data-view="settings">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          </svg>
+          Settings
+        </div>
+      </nav>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main">
+      <header class="header">
+        <h1 id="page-title">Dashboard</h1>
+        <div style="display: flex; align-items: center; gap: 20px;">
+          <div class="connection-status">
+            <div class="status-dot" id="status-dot"></div>
+            <span id="status-text">Disconnected</span>
+          </div>
+          <div class="user-info">
+            <span id="logged-in-user" style="color: var(--text-secondary); font-size: 13px;"></span>
+            <button class="logout-btn" id="logout-btn" onclick="logout()">
+              Logout
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <div class="content">
+        <!-- Dashboard View -->
+        <div class="view active" id="view-dashboard">
+          <!-- Main Stats Cards Row -->
+          <div class="dashboard-cards">
+
+            <!-- Core NATS Card -->
+            <div class="card" style="margin-bottom: 0;">
+              <div class="card-header" style="padding: 12px 16px; border-bottom: 2px solid var(--accent);">
+                <h2 style="font-size: 14px; text-transform: uppercase; letter-spacing: 1px; color: var(--accent);">Core</h2>
+              </div>
+              <div class="card-body" style="padding: 16px;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                  <div>
+                    <div style="font-size: 11px; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 4px;">Connections</div>
+                    <div style="font-size: 24px; font-weight: bold;" id="stat-connections">-</div>
+                    <div style="font-size: 11px; color: var(--text-secondary);" id="stat-total-conns-sub">-</div>
+                  </div>
+                  <div>
+                    <div style="font-size: 11px; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 4px;">Subscriptions</div>
+                    <div style="font-size: 24px; font-weight: bold;" id="stat-subscriptions">-</div>
+                  </div>
+                  <div>
+                    <div style="font-size: 11px; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 4px;">Messages In</div>
+                    <div style="font-size: 20px; font-weight: bold;" id="stat-msgs-in">-</div>
+                    <div class="trend" id="trend-msgs-in" style="font-size: 11px;"></div>
+                  </div>
+                  <div>
+                    <div style="font-size: 11px; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 4px;">Messages Out</div>
+                    <div style="font-size: 20px; font-weight: bold;" id="stat-msgs-out">-</div>
+                    <div class="trend" id="trend-msgs-out" style="font-size: 11px;"></div>
+                  </div>
+                  <div>
+                    <div style="font-size: 11px; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 4px;">Bytes In</div>
+                    <div style="font-size: 20px; font-weight: bold;" id="stat-bytes-in">-</div>
+                    <div class="trend" id="trend-bytes-in" style="font-size: 11px;"></div>
+                  </div>
+                  <div>
+                    <div style="font-size: 11px; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 4px;">Bytes Out</div>
+                    <div style="font-size: 20px; font-weight: bold;" id="stat-bytes-out">-</div>
+                    <div class="trend" id="trend-bytes-out" style="font-size: 11px;"></div>
+                  </div>
+                </div>
+                <div style="margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center;">
+                  <div>
+                    <span style="font-size: 11px; color: var(--text-secondary);">Slow Consumers</span>
+                    <span id="stat-slow-consumers" style="font-weight: bold; margin-left: 8px;">-</span>
+                  </div>
+                  <div id="stat-slow-consumers-sub" style="font-size: 11px; color: var(--success);">all healthy</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- JetStream Card -->
+            <div class="card" style="margin-bottom: 0;">
+              <div class="card-header" style="padding: 12px 16px; border-bottom: 2px solid var(--chart-3);">
+                <h2 style="font-size: 14px; text-transform: uppercase; letter-spacing: 1px; color: var(--chart-3);">JetStream</h2>
+              </div>
+              <div class="card-body" style="padding: 16px;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                  <div>
+                    <div style="font-size: 11px; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 4px;">Streams</div>
+                    <div style="font-size: 24px; font-weight: bold;" id="stat-js-streams">-</div>
+                    <div style="font-size: 11px; color: var(--text-secondary);" id="stat-js-streams-sub"></div>
+                  </div>
+                  <div>
+                    <div style="font-size: 11px; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 4px;">Consumers</div>
+                    <div style="font-size: 24px; font-weight: bold;" id="stat-js-consumers">-</div>
+                    <div style="font-size: 11px; color: var(--text-secondary);" id="stat-js-consumers-sub"></div>
+                  </div>
+                  <div>
+                    <div style="font-size: 11px; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 4px;">Storage</div>
+                    <div style="font-size: 20px; font-weight: bold;" id="stat-js-storage">-</div>
+                    <div style="font-size: 11px; color: var(--text-secondary);" id="stat-js-storage-sub"></div>
+                  </div>
+                  <div>
+                    <div style="font-size: 11px; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 4px;">API Calls</div>
+                    <div style="font-size: 20px; font-weight: bold;" id="stat-js-api">-</div>
+                    <div style="font-size: 11px;" id="stat-js-api-sub"></div>
+                  </div>
+                </div>
+                <div id="js-streams-mini" style="margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border); max-height: 80px; overflow-y: auto;">
+                  <div style="font-size: 11px; color: var(--text-secondary);">No streams</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- KV Store Card -->
+            <div class="card" style="margin-bottom: 0;">
+              <div class="card-header" style="padding: 12px 16px; border-bottom: 2px solid var(--chart-2);">
+                <h2 style="font-size: 14px; text-transform: uppercase; letter-spacing: 1px; color: var(--chart-2);">KV Store</h2>
+              </div>
+              <div class="card-body" style="padding: 16px;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                  <div>
+                    <div style="font-size: 11px; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 4px;">Buckets</div>
+                    <div style="font-size: 24px; font-weight: bold;" id="stat-kv-buckets">-</div>
+                  </div>
+                  <div>
+                    <div style="font-size: 11px; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 4px;">Total Keys</div>
+                    <div style="font-size: 24px; font-weight: bold;" id="stat-kv-keys">-</div>
+                  </div>
+                  <div>
+                    <div style="font-size: 11px; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 4px;">Total Size</div>
+                    <div style="font-size: 20px; font-weight: bold;" id="stat-kv-size">-</div>
+                  </div>
+                  <div>
+                    <div style="font-size: 11px; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 4px;">Avg Keys/Bucket</div>
+                    <div style="font-size: 20px; font-weight: bold;" id="stat-kv-avg">-</div>
+                  </div>
+                </div>
+                <div id="kv-top-buckets" style="margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border);">
+                  <div style="font-size: 11px; color: var(--text-secondary); margin-bottom: 8px;">Top Buckets by Size</div>
+                  <div id="kv-top-list" style="font-size: 12px;">-</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- CPU & Memory Combined Cards -->
+          <div class="charts-grid">
+            <div class="chart-card">
+              <div style="display: flex; align-items: center; gap: 30px; margin-bottom: 20px;">
+                <div style="position: relative; width: 120px; height: 80px; flex-shrink: 0;">
+                  <canvas id="cpu-gauge"></canvas>
+                  <div style="position: absolute; bottom: 5px; left: 50%; transform: translateX(-50%); font-size: 20px; font-weight: bold;" id="cpu-value">0%</div>
+                </div>
+                <div>
+                  <h3 style="margin: 0;">CPU Usage</h3>
+                  <p style="color: var(--text-secondary); font-size: 12px; margin: 4px 0 0 0;">Server processor utilization</p>
+                </div>
+              </div>
+              <div class="chart-container">
+                <canvas id="cpu-chart"></canvas>
+              </div>
+            </div>
+            <div class="chart-card">
+              <div style="display: flex; align-items: center; gap: 30px; margin-bottom: 20px;">
+                <div style="position: relative; width: 120px; height: 80px; flex-shrink: 0;">
+                  <canvas id="memory-gauge"></canvas>
+                  <div style="position: absolute; bottom: 5px; left: 50%; transform: translateX(-50%); font-size: 20px; font-weight: bold;" id="memory-value">0 MB</div>
+                </div>
+                <div>
+                  <h3 style="margin: 0;">Memory Usage</h3>
+                  <p style="color: var(--text-secondary); font-size: 12px; margin: 4px 0 0 0;">Server memory consumption</p>
+                </div>
+              </div>
+              <div class="chart-container">
+                <canvas id="memory-chart"></canvas>
+              </div>
+            </div>
+          </div>
+
+          <!-- Line Charts -->
+          <div class="charts-grid">
+            <div class="chart-card">
+              <h3>Messages (In/Out per second)</h3>
+              <div class="chart-container">
+                <canvas id="messages-chart"></canvas>
+              </div>
+            </div>
+            <div class="chart-card">
+              <h3>Bytes (In/Out per second)</h3>
+              <div class="chart-container">
+                <canvas id="bytes-chart"></canvas>
+              </div>
+            </div>
+            <div class="chart-card">
+              <h3>Connections</h3>
+              <div class="chart-container">
+                <canvas id="connections-chart"></canvas>
+              </div>
+            </div>
+            <div class="chart-card">
+              <h3>Subscriptions</h3>
+              <div class="chart-container">
+                <canvas id="subscriptions-chart"></canvas>
+              </div>
+            </div>
+          </div>
+
+          <!-- Server Info -->
+          <div class="card">
+            <div class="card-header">
+              <h2>Server Information</h2>
+              <div class="live-indicator">
+                <div class="live-dot"></div>
+                <span>Live</span>
+              </div>
+            </div>
+            <div class="card-body">
+              <div class="json-view" id="server-info">Loading...</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Connections View -->
+        <div class="view" id="view-connections">
+          <div class="card">
+            <div class="card-header">
+              <h2>Active Connections</h2>
+              <button class="btn btn-secondary btn-sm" onclick="refreshConnections()">Refresh</button>
+            </div>
+            <div class="card-body" id="connections-list">
+              <div class="loading">
+                <div class="spinner"></div>
+                Loading connections...
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Certificates View -->
+        <div class="view" id="view-certificates">
+          <div class="card">
+            <div class="card-header">
+              <h2>CA Certificate</h2>
+            </div>
+            <div class="card-body" id="ca-info">
+              <div class="loading">
+                <div class="spinner"></div>
+                Loading CA info...
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <h2>Client Certificates</h2>
+              <button class="btn btn-primary btn-sm" onclick="showCreateCertModal()">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="12" y1="5" x2="12" y2="19"/>
+                  <line x1="5" y1="12" x2="19" y2="12"/>
+                </svg>
+                Create Certificate
+              </button>
+            </div>
+            <div class="card-body" id="certificates-list">
+              <div class="loading">
+                <div class="spinner"></div>
+                Loading certificates...
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Users View -->
+        <div class="view" id="view-users">
+          <div class="card">
+            <div class="card-header">
+              <h2>User Management</h2>
+            </div>
+            <div class="card-body" id="users-info">
+              <div class="loading">
+                <div class="spinner"></div>
+                Loading users...
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- JetStream View -->
+        <div class="view" id="view-jetstream">
+          <!-- Streams List -->
+          <div class="card" id="js-streams-card">
+            <div class="card-header">
+              <h2>JetStream Streams</h2>
+              <div style="display: flex; gap: 10px;">
+                <button class="btn btn-secondary btn-sm" onclick="refreshJsStreams()">Refresh</button>
+                <button class="btn btn-primary btn-sm" onclick="showCreateStreamModal()">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="12" y1="5" x2="12" y2="19"/>
+                    <line x1="5" y1="12" x2="19" y2="12"/>
+                  </svg>
+                  Create Stream
+                </button>
+              </div>
+            </div>
+            <div class="card-body" id="js-streams-list">
+              <div class="loading">
+                <div class="spinner"></div>
+                Loading streams...
+              </div>
+            </div>
+          </div>
+
+          <!-- Stream Detail (shown when stream is selected) -->
+          <div class="card" id="js-stream-detail-card" style="display: none;">
+            <div class="card-header">
+              <div style="display: flex; align-items: center; gap: 15px;">
+                <button class="btn btn-secondary btn-sm" onclick="deselectStream()" title="Back to streams">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M19 12H5M12 19l-7-7 7-7"/>
+                  </svg>
+                </button>
+                <h2>Stream: <span id="js-selected-stream" style="color: var(--accent);"></span></h2>
+              </div>
+              <div style="display: flex; gap: 10px;">
+                <button class="btn btn-secondary btn-sm" onclick="refreshStreamDetail()">Refresh</button>
+                <button class="btn btn-warning btn-sm" id="purge-stream-btn">Purge</button>
+                <button class="btn btn-danger btn-sm" id="delete-stream-btn">Delete Stream</button>
+              </div>
+            </div>
+            <div class="card-body" id="js-stream-info">
+              <div class="loading">
+                <div class="spinner"></div>
+                Loading stream info...
+              </div>
+            </div>
+          </div>
+
+          <!-- Consumers List (shown when stream is selected) -->
+          <div class="card" id="js-consumers-card" style="display: none;">
+            <div class="card-header">
+              <h2>Consumers</h2>
+              <div style="display: flex; gap: 10px;">
+                <button class="btn btn-secondary btn-sm" onclick="refreshJsConsumers()">Refresh</button>
+                <button class="btn btn-primary btn-sm" onclick="showCreateConsumerModal()">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="12" y1="5" x2="12" y2="19"/>
+                    <line x1="5" y1="12" x2="19" y2="12"/>
+                  </svg>
+                  Create Consumer
+                </button>
+              </div>
+            </div>
+            <div class="card-body" id="js-consumers-list">
+              <div class="loading">
+                <div class="spinner"></div>
+                Loading consumers...
+              </div>
+            </div>
+          </div>
+
+          <!-- Messages Browser (shown when stream is selected) -->
+          <div class="card" id="js-messages-card" style="display: none;">
+            <div class="card-header">
+              <h2>Messages</h2>
+              <div style="display: flex; gap: 10px; align-items: center;">
+                <input type="number" id="js-msg-start-seq" placeholder="Start seq..." style="padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-tertiary); color: var(--text-primary); width: 120px;">
+                <button class="btn btn-secondary btn-sm" onclick="refreshJsMessages()">Load Messages</button>
+                <button class="btn btn-primary btn-sm" onclick="showPublishMessageModal()">Publish</button>
+              </div>
+            </div>
+            <div class="card-body" id="js-messages-list">
+              <p style="color: var(--text-secondary);">Click "Load Messages" to browse stream messages</p>
+            </div>
+          </div>
+
+          <!-- Message Detail (shown when message is selected) -->
+          <div class="card" id="js-message-detail-card" style="display: none;">
+            <div class="card-header">
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <h2>Message: <span id="js-selected-msg-seq" style="color: var(--accent); font-family: monospace;"></span></h2>
+                <span id="js-msg-subject" class="badge badge-secondary" style="background: var(--bg-tertiary); color: var(--text-secondary);"></span>
+              </div>
+              <div style="display: flex; gap: 10px;">
+                <select id="js-msg-view-mode" onchange="renderJsMessageValue()" style="padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-tertiary); color: var(--text-primary);">
+                  <option value="pretty">Pretty JSON</option>
+                  <option value="raw">Raw</option>
+                  <option value="tree">Tree View</option>
+                </select>
+                <button class="btn btn-danger btn-sm" id="delete-message-btn">Delete Message</button>
+              </div>
+            </div>
+            <div class="card-body">
+              <div id="js-message-viewer" style="background: var(--bg-primary); border-radius: 8px; padding: 16px; font-family: monospace; font-size: 13px; overflow-x: auto; max-height: 400px; overflow-y: auto;"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- KV Store View -->
+        <div class="view" id="view-kvstore">
+          <!-- Bucket Selection -->
+          <div class="card" id="kv-buckets-card">
+            <div class="card-header">
+              <h2>KV Buckets</h2>
+              <div style="display: flex; gap: 10px;">
+                <button class="btn btn-secondary btn-sm" onclick="refreshKvBuckets()">Refresh</button>
+                <button class="btn btn-primary btn-sm" onclick="showCreateBucketModal()">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="12" y1="5" x2="12" y2="19"/>
+                    <line x1="5" y1="12" x2="19" y2="12"/>
+                  </svg>
+                  Create Bucket
+                </button>
+              </div>
+            </div>
+            <div class="card-body" id="kv-buckets-list">
+              <div class="loading">
+                <div class="spinner"></div>
+                Loading buckets...
+              </div>
+            </div>
+          </div>
+
+          <!-- Key Explorer (shown when bucket is selected) -->
+          <div class="card" id="kv-keys-card" style="display: none;">
+            <div class="card-header">
+              <div style="display: flex; align-items: center; gap: 15px;">
+                <button class="btn btn-secondary btn-sm" onclick="deselectBucket()" title="Back to buckets">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M19 12H5M12 19l-7-7 7-7"/>
+                  </svg>
+                </button>
+                <h2>Keys in <span id="kv-selected-bucket" style="color: var(--accent);"></span></h2>
+              </div>
+              <div style="display: flex; gap: 10px; align-items: center;">
+                <input type="text" id="kv-search" placeholder="Search keys..." style="padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-tertiary); color: var(--text-primary); width: 200px;">
+                <button class="btn btn-secondary btn-sm" onclick="refreshKvKeys()">Refresh</button>
+                <button class="btn btn-primary btn-sm" onclick="showAddKeyModal()">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="12" y1="5" x2="12" y2="19"/>
+                    <line x1="5" y1="12" x2="19" y2="12"/>
+                  </svg>
+                  Add Key
+                </button>
+              </div>
+            </div>
+            <div class="card-body" id="kv-keys-list">
+              <div class="loading">
+                <div class="spinner"></div>
+                Loading keys...
+              </div>
+            </div>
+          </div>
+
+          <!-- Key Value Viewer (shown when key is selected) -->
+          <div class="card" id="kv-value-card" style="display: none;">
+            <div class="card-header">
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <h2>Value: <span id="kv-selected-key" style="color: var(--accent); font-family: monospace;"></span></h2>
+                <span id="kv-key-revision" class="badge badge-secondary" style="background: var(--bg-tertiary); color: var(--text-secondary);"></span>
+              </div>
+              <div style="display: flex; gap: 10px;">
+                <select id="kv-view-mode" onchange="changeViewMode()" style="padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-tertiary); color: var(--text-primary);">
+                  <option value="pretty">Pretty JSON</option>
+                  <option value="raw">Raw</option>
+                  <option value="tree">Tree View</option>
+                </select>
+                <button class="btn btn-secondary btn-sm" onclick="showKeyHistory()">History</button>
+                <button class="btn btn-secondary btn-sm" onclick="showEditKeyModal()">Edit</button>
+                <button class="btn btn-secondary btn-sm" onclick="showRenameKeyModal()">Rename</button>
+                <button class="btn btn-danger btn-sm" id="delete-key-btn">Delete</button>
+              </div>
+            </div>
+            <div class="card-body">
+              <div id="kv-value-viewer" style="background: var(--bg-primary); border-radius: 8px; padding: 16px; font-family: monospace; font-size: 13px; overflow-x: auto; max-height: 500px; overflow-y: auto;"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Settings View -->
+        <div class="view" id="view-settings">
+          <div class="card">
+            <div class="card-header">
+              <h2>Configuration</h2>
+            </div>
+            <div class="card-body">
+              <div class="form-group">
+                <label>NATS Server URL</label>
+                <input type="text" id="nats-url" value="localhost:4223" disabled>
+              </div>
+              <div class="form-group">
+                <label>Monitoring URL</label>
+                <input type="text" id="monitoring-url" value="http://localhost:8223" disabled>
+              </div>
+              <p style="color: var(--text-secondary); font-size: 14px; margin-top: 20px;">
+                Configuration is managed through environment variables and the NATS configuration file.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Create Certificate Modal -->
+  <div class="modal-overlay" id="create-cert-modal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Create Client Certificate</h3>
+        <button class="modal-close" onclick="closeModal('create-cert-modal')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="create-cert-form">
+          <div class="form-group">
+            <label>Username *</label>
+            <input type="text" name="username" required placeholder="e.g., johndoe">
+          </div>
+          <div class="form-group">
+            <label>Email *</label>
+            <input type="email" name="email" required placeholder="e.g., john@example.com">
+          </div>
+          <div class="form-group">
+            <label>Organization</label>
+            <input type="text" name="organization" placeholder="e.g., Acme Corp">
+          </div>
+          <div class="form-group">
+            <label>Valid for (days)</label>
+            <input type="number" name="days" value="365" min="1" max="3650">
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('create-cert-modal')">Cancel</button>
+        <button class="btn btn-primary" onclick="createCertificate()">Create Certificate</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Create KV Bucket Modal -->
+  <div class="modal-overlay" id="create-bucket-modal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Create KV Bucket</h3>
+        <button class="modal-close" onclick="closeModal('create-bucket-modal')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="create-bucket-form">
+          <div class="form-group">
+            <label>Bucket Name *</label>
+            <input type="text" name="name" required placeholder="e.g., my-config" pattern="[a-zA-Z0-9_-]+">
+            <small style="color: var(--text-secondary); font-size: 12px;">Alphanumeric, underscores, and dashes only</small>
+          </div>
+          <div class="form-group">
+            <label>Description</label>
+            <input type="text" name="description" placeholder="Optional description">
+          </div>
+          <div class="form-group">
+            <label>History (versions per key)</label>
+            <input type="number" name="history" value="1" min="1" max="64">
+          </div>
+          <div class="form-group">
+            <label>TTL (seconds, 0 = no expiry)</label>
+            <input type="number" name="maxAge" value="0" min="0">
+          </div>
+          <div class="form-group">
+            <label>Max Bucket Size (bytes, 0 = unlimited)</label>
+            <input type="number" name="maxBytes" value="0" min="0">
+          </div>
+          <div class="form-group">
+            <label>Replicas</label>
+            <input type="number" name="replicas" value="1" min="1" max="5">
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('create-bucket-modal')">Cancel</button>
+        <button class="btn btn-primary" onclick="createKvBucket()">Create Bucket</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add/Edit KV Key Modal -->
+  <div class="modal-overlay" id="kv-key-modal">
+    <div class="modal" style="max-width: 700px;">
+      <div class="modal-header">
+        <h3 id="kv-key-modal-title">Add Key</h3>
+        <button class="modal-close" onclick="closeModal('kv-key-modal')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="kv-key-form">
+          <div class="form-group">
+            <label>Key *</label>
+            <input type="text" name="key" id="kv-key-input" required placeholder="e.g., config.database.host">
+          </div>
+          <div class="form-group">
+            <label>Value *</label>
+            <textarea name="value" id="kv-value-input" required placeholder='{"key": "value"} or plain text' style="width: 100%; min-height: 200px; padding: 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-tertiary); color: var(--text-primary); font-family: monospace; font-size: 13px; resize: vertical;"></textarea>
+            <small style="color: var(--text-secondary); font-size: 12px;">Enter JSON or plain text value</small>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('kv-key-modal')">Cancel</button>
+        <button class="btn btn-primary" onclick="saveKvKey()">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Rename KV Key Modal -->
+  <div class="modal-overlay" id="rename-key-modal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Rename Key</h3>
+        <button class="modal-close" onclick="closeModal('rename-key-modal')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="rename-key-form">
+          <div class="form-group">
+            <label>Current Key</label>
+            <input type="text" id="rename-current-key" disabled style="background: var(--bg-primary);">
+          </div>
+          <div class="form-group">
+            <label>New Key Name *</label>
+            <input type="text" name="newKey" id="rename-new-key" required placeholder="e.g., new.key.name">
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('rename-key-modal')">Cancel</button>
+        <button class="btn btn-primary" onclick="renameKvKey()">Rename</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Key History Modal -->
+  <div class="modal-overlay" id="key-history-modal">
+    <div class="modal" style="max-width: 800px;">
+      <div class="modal-header">
+        <h3>Key History: <span id="history-key-name" style="color: var(--accent); font-family: monospace;"></span></h3>
+        <button class="modal-close" onclick="closeModal('key-history-modal')">&times;</button>
+      </div>
+      <div class="modal-body" id="key-history-content" style="max-height: 500px; overflow-y: auto;">
+        <div class="loading">
+          <div class="spinner"></div>
+          Loading history...
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('key-history-modal')">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Create JetStream Stream Modal -->
+  <div class="modal-overlay" id="create-stream-modal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Create Stream</h3>
+        <button class="modal-close" onclick="closeModal('create-stream-modal')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="create-stream-form">
+          <div class="form-group">
+            <label>Stream Name *</label>
+            <input type="text" name="name" required placeholder="e.g., ORDERS" pattern="[a-zA-Z0-9_-]+">
+            <small style="color: var(--text-secondary); font-size: 12px;">Alphanumeric, underscores, and dashes only</small>
+          </div>
+          <div class="form-group">
+            <label>Subjects * (comma-separated)</label>
+            <input type="text" name="subjects" required placeholder="e.g., orders.>, orders.*.created">
+            <small style="color: var(--text-secondary); font-size: 12px;">Use > for multi-level wildcard, * for single level</small>
+          </div>
+          <div class="form-group">
+            <label>Description</label>
+            <input type="text" name="description" placeholder="Optional description">
+          </div>
+          <div class="form-group">
+            <label>Retention Policy</label>
+            <select name="retention" style="width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-tertiary); color: var(--text-primary);">
+              <option value="limits">Limits (default)</option>
+              <option value="interest">Interest (delete when no consumers)</option>
+              <option value="workqueue">WorkQueue (delete after ack)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Storage</label>
+            <select name="storage" style="width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-tertiary); color: var(--text-primary);">
+              <option value="file">File (default)</option>
+              <option value="memory">Memory</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Max Messages (0 = unlimited)</label>
+            <input type="number" name="maxMsgs" value="0" min="0">
+          </div>
+          <div class="form-group">
+            <label>Max Bytes (0 = unlimited)</label>
+            <input type="number" name="maxBytes" value="0" min="0">
+          </div>
+          <div class="form-group">
+            <label>Max Age in seconds (0 = unlimited)</label>
+            <input type="number" name="maxAge" value="0" min="0">
+          </div>
+          <div class="form-group">
+            <label>Replicas</label>
+            <input type="number" name="replicas" value="1" min="1" max="5">
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('create-stream-modal')">Cancel</button>
+        <button class="btn btn-primary" onclick="createJsStream()">Create Stream</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Create JetStream Consumer Modal -->
+  <div class="modal-overlay" id="create-consumer-modal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Create Consumer</h3>
+        <button class="modal-close" onclick="closeModal('create-consumer-modal')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="create-consumer-form">
+          <div class="form-group">
+            <label>Consumer Name *</label>
+            <input type="text" name="durableName" required placeholder="e.g., order-processor">
+          </div>
+          <div class="form-group">
+            <label>Filter Subject (optional)</label>
+            <input type="text" name="filterSubject" placeholder="e.g., orders.us.>">
+            <small style="color: var(--text-secondary); font-size: 12px;">Only receive messages matching this subject</small>
+          </div>
+          <div class="form-group">
+            <label>Deliver Policy</label>
+            <select name="deliverPolicy" style="width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-tertiary); color: var(--text-primary);">
+              <option value="all">All (replay all messages)</option>
+              <option value="last">Last (start from last message)</option>
+              <option value="new">New (only new messages)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Ack Policy</label>
+            <select name="ackPolicy" style="width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-tertiary); color: var(--text-primary);">
+              <option value="explicit">Explicit (manual ack required)</option>
+              <option value="none">None (no ack needed)</option>
+              <option value="all">All (ack implies all previous)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Max Deliver (0 = unlimited)</label>
+            <input type="number" name="maxDeliver" value="0" min="0">
+            <small style="color: var(--text-secondary); font-size: 12px;">Max redelivery attempts</small>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('create-consumer-modal')">Cancel</button>
+        <button class="btn btn-primary" onclick="createJsConsumer()">Create Consumer</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Publish Message Modal -->
+  <div class="modal-overlay" id="publish-message-modal">
+    <div class="modal" style="max-width: 700px;">
+      <div class="modal-header">
+        <h3>Publish Message</h3>
+        <button class="modal-close" onclick="closeModal('publish-message-modal')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="publish-message-form">
+          <div class="form-group">
+            <label>Subject *</label>
+            <input type="text" name="subject" id="publish-subject" required placeholder="e.g., orders.new">
+            <small style="color: var(--text-secondary); font-size: 12px;">Subject must match a stream subject pattern</small>
+          </div>
+          <div class="form-group">
+            <label>Message Data *</label>
+            <textarea name="data" id="publish-data" required placeholder='{"key": "value"} or plain text' style="width: 100%; min-height: 200px; padding: 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-tertiary); color: var(--text-primary); font-family: monospace; font-size: 13px; resize: vertical;"></textarea>
+            <small style="color: var(--text-secondary); font-size: 12px;">Enter JSON or plain text</small>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('publish-message-modal')">Cancel</button>
+        <button class="btn btn-primary" onclick="publishJsMessage()">Publish</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ============================================
+    // Authentication
+    // ============================================
+    let isAuthenticated = false;
+    let keyFileContent = null;
+    let currentUser = null;
+
+    // Check session on page load
+    async function checkSession() {
+      try {
+        const res = await fetch('/api/auth/session');
+        const data = await res.json();
+
+        if (data.authenticated) {
+          isAuthenticated = true;
+          currentUser = data.session;
+          updateUserDisplay();
+          showApp();
+          return true;
+        } else {
+          showLogin();
+          return false;
+        }
+      } catch (error) {
+        console.error('Session check failed:', error);
+        showLogin();
+        return false;
+      }
+    }
+
+    function updateUserDisplay() {
+      const userEl = document.getElementById('logged-in-user');
+      if (currentUser) {
+        if (currentUser.username) {
+          // Show username from certificate
+          userEl.textContent = currentUser.username;
+          userEl.title = currentUser.username;
+        } else if (currentUser.fingerprint) {
+          // Fallback to shortened fingerprint
+          const shortFingerprint = currentUser.fingerprint.substring(0, 12);
+          userEl.innerHTML = `<span style="opacity: 0.6;">Key:</span> ${shortFingerprint}...`;
+          userEl.title = 'Key fingerprint: ' + currentUser.fingerprint;
+        }
+      }
+    }
+
+    function showLogin() {
+      document.getElementById('login-screen').classList.remove('hidden');
+      document.querySelector('.app').style.display = 'none';
+    }
+
+    function showApp() {
+      document.getElementById('login-screen').classList.add('hidden');
+      document.querySelector('.app').style.display = 'flex';
+    }
+
+    function showLoginError(message) {
+      const errorEl = document.getElementById('login-error');
+      errorEl.textContent = message;
+      errorEl.classList.add('visible');
+    }
+
+    function hideLoginError() {
+      document.getElementById('login-error').classList.remove('visible');
+    }
+
+    // File reading helper
+    function readFileAsText(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(reader.error);
+        reader.readAsText(file);
+      });
+    }
+
+    // Setup file upload handlers
+    function setupFileUpload(areaId, inputId, fileNameId, onFile) {
+      const area = document.getElementById(areaId);
+      const input = document.getElementById(inputId);
+      const fileName = document.getElementById(fileNameId);
+
+      area.addEventListener('click', () => input.click());
+
+      area.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        area.classList.add('dragover');
+      });
+
+      area.addEventListener('dragleave', () => {
+        area.classList.remove('dragover');
+      });
+
+      area.addEventListener('drop', async (e) => {
+        e.preventDefault();
+        area.classList.remove('dragover');
+        const file = e.dataTransfer.files[0];
+        if (file) {
+          await handleFile(file);
+        }
+      });
+
+      input.addEventListener('change', async () => {
+        const file = input.files[0];
+        if (file) {
+          await handleFile(file);
+        }
+      });
+
+      async function handleFile(file) {
+        try {
+          const content = await readFileAsText(file);
+          area.classList.add('has-file');
+          fileName.textContent = file.name;
+          fileName.style.display = 'block';
+          onFile(content);
+        } catch (error) {
+          showLoginError('Failed to read file: ' + error.message);
+        }
+      }
+    }
+
+    // Login handler
+    async function login() {
+      hideLoginError();
+
+      if (!keyFileContent) {
+        showLoginError('Please upload a client key file');
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            key: keyFileContent
+          })
+        });
+
+        const data = await res.json();
+
+        if (res.ok && data.success) {
+          isAuthenticated = true;
+          currentUser = data.session;
+          updateUserDisplay();
+          showApp();
+          // Initialize the app
+          initApp();
+        } else {
+          showLoginError(data.error || 'Login failed');
+        }
+      } catch (error) {
+        showLoginError('Login failed: ' + error.message);
+      }
+    }
+
+    // Logout handler
+    async function logout() {
+      try {
+        await fetch('/api/auth/logout', { method: 'POST' });
+      } catch (error) {
+        console.error('Logout error:', error);
+      }
+
+      isAuthenticated = false;
+      keyFileContent = null;
+      currentUser = null;
+
+      // Reset file upload area
+      document.getElementById('key-upload-area').classList.remove('has-file');
+      document.getElementById('key-file-name').style.display = 'none';
+      document.getElementById('key-file-input').value = '';
+      document.getElementById('logged-in-user').textContent = '';
+
+      showLogin();
+    }
+
+    // Handle 401 errors from API calls
+    function handleApiError(error) {
+      if (error.message && error.message.includes('401')) {
+        logout();
+        showLoginError('Session expired. Please login again.');
+      }
+    }
+
+    // Initialize file upload handlers - auto login on file selection
+    setupFileUpload('key-upload-area', 'key-file-input', 'key-file-name', (content) => {
+      keyFileContent = content;
+      login();
+    });
+
+    // ============================================
+    // Chart.js global config
+    // ============================================
+    Chart.defaults.color = '#94a3b8';
+    Chart.defaults.borderColor = '#475569';
+    Chart.defaults.font.family = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+
+    // State
+    let currentView = 'dashboard';
+    const MAX_DATA_POINTS = 300; // 5 minutes of data for display (can be adjusted)
+    const REFRESH_INTERVAL = 1000; // 1 second
+
+    // URL Routing
+    const validViews = ['dashboard', 'connections', 'certificates', 'users', 'jetstream', 'kvstore', 'settings'];
+
+    function parseHash() {
+      const hash = window.location.hash.slice(1) || '/dashboard';
+      const parts = hash.split('/').filter(Boolean);
+      return {
+        view: parts[0] || 'dashboard',
+        // For kvstore: bucket, key
+        // For jetstream: stream, messageSeq
+        param1: parts[1] ? decodeURIComponent(parts[1]) : null,
+        param2: parts[2] ? decodeURIComponent(parts[2]) : null,
+        // Aliases for clarity
+        get bucket() { return this.param1; },
+        get key() { return this.param2; },
+        get stream() { return this.param1; },
+        get messageSeq() { return this.param2; }
+      };
+    }
+
+    function updateUrl(view, param1 = null, param2 = null) {
+      let hash = `#/${view}`;
+      if (param1) {
+        hash += `/${encodeURIComponent(param1)}`;
+        if (param2) {
+          hash += `/${encodeURIComponent(param2)}`;
+        }
+      }
+      if (window.location.hash !== hash) {
+        window.history.pushState(null, '', hash);
+      }
+    }
+
+    function navigateFromUrl() {
+      const route = parseHash();
+      const view = validViews.includes(route.view) ? route.view : 'dashboard';
+
+      // Set default URL if no hash present
+      if (!window.location.hash) {
+        window.history.replaceState(null, '', '#/dashboard');
+      }
+
+      // Switch to the view if needed
+      if (view !== currentView) {
+        switchView(view, false); // false = don't update URL (we're already at that URL)
+      }
+
+      // Handle KV Store sub-navigation after a small delay to allow view to render
+      if (view === 'kvstore') {
+        setTimeout(() => {
+          if (route.bucket && route.bucket !== selectedBucket) {
+            selectBucket(route.bucket, false);
+            if (route.key) {
+              // Wait for keys to load, then select the key
+              setTimeout(() => selectKey(encodeURIComponent(route.key), false), 500);
+            }
+          } else if (!route.bucket && selectedBucket) {
+            deselectBucket(false);
+          }
+        }, 100);
+      }
+
+      // Handle JetStream sub-navigation
+      if (view === 'jetstream') {
+        setTimeout(() => {
+          if (route.stream && route.stream !== selectedStream) {
+            selectStream(route.stream, false);
+            if (route.messageSeq) {
+              // Wait for stream to load, then select the message
+              setTimeout(() => selectMessage(parseInt(route.messageSeq), false), 500);
+            }
+          } else if (!route.stream && selectedStream) {
+            deselectStream(false);
+          }
+        }, 100);
+      }
+    }
+    let historyLoaded = false;
+    let skipNextRateCalculation = false; // Flag to skip rate calc after history load
+
+    // Historical data for charts
+    const history = {
+      labels: [],
+      timestamps: [],
+      msgsIn: [],
+      msgsOut: [],
+      bytesIn: [],
+      bytesOut: [],
+      connections: [],
+      subscriptions: [],
+      cpu: [],
+      memory: []
+    };
+
+    // Previous values for rate calculation
+    let prevData = null;
+
+    // Charts
+    let messagesChart, bytesChart, connectionsChart, subscriptionsChart;
+    let cpuChart, memoryChart;
+    let cpuGauge, memoryGauge;
+
+    // Initialize charts
+    function initCharts() {
+      const chartOptions = {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: { duration: 0 },
+        plugins: {
+          legend: {
+            position: 'top',
+            labels: { boxWidth: 12, padding: 15 }
+          }
+        },
+        scales: {
+          x: {
+            display: true,
+            grid: { display: false }
+          },
+          y: {
+            display: true,
+            beginAtZero: true,
+            grid: { color: 'rgba(71, 85, 105, 0.3)' }
+          }
+        },
+        elements: {
+          line: { tension: 0.4, borderWidth: 2 },
+          point: { radius: 0 }
+        }
+      };
+
+      // Messages Chart
+      messagesChart = new Chart(document.getElementById('messages-chart'), {
+        type: 'line',
+        data: {
+          labels: [],
+          datasets: [
+            {
+              label: 'In/sec',
+              data: [],
+              borderColor: '#22d3ee',
+              backgroundColor: 'rgba(34, 211, 238, 0.1)',
+              fill: true
+            },
+            {
+              label: 'Out/sec',
+              data: [],
+              borderColor: '#a855f7',
+              backgroundColor: 'rgba(168, 85, 247, 0.1)',
+              fill: true
+            }
+          ]
+        },
+        options: chartOptions
+      });
+
+      // Bytes Chart
+      bytesChart = new Chart(document.getElementById('bytes-chart'), {
+        type: 'line',
+        data: {
+          labels: [],
+          datasets: [
+            {
+              label: 'In/sec',
+              data: [],
+              borderColor: '#22c55e',
+              backgroundColor: 'rgba(34, 197, 94, 0.1)',
+              fill: true
+            },
+            {
+              label: 'Out/sec',
+              data: [],
+              borderColor: '#f59e0b',
+              backgroundColor: 'rgba(245, 158, 11, 0.1)',
+              fill: true
+            }
+          ]
+        },
+        options: chartOptions
+      });
+
+      // Connections Chart
+      connectionsChart = new Chart(document.getElementById('connections-chart'), {
+        type: 'line',
+        data: {
+          labels: [],
+          datasets: [{
+            label: 'Connections',
+            data: [],
+            borderColor: '#ec4899',
+            backgroundColor: 'rgba(236, 72, 153, 0.1)',
+            fill: true
+          }]
+        },
+        options: chartOptions
+      });
+
+      // Subscriptions Chart
+      subscriptionsChart = new Chart(document.getElementById('subscriptions-chart'), {
+        type: 'line',
+        data: {
+          labels: [],
+          datasets: [{
+            label: 'Subscriptions',
+            data: [],
+            borderColor: '#8b5cf6',
+            backgroundColor: 'rgba(139, 92, 246, 0.1)',
+            fill: true
+          }]
+        },
+        options: chartOptions
+      });
+
+      // CPU History Chart
+      cpuChart = new Chart(document.getElementById('cpu-chart'), {
+        type: 'line',
+        data: {
+          labels: [],
+          datasets: [{
+            label: 'CPU %',
+            data: [],
+            borderColor: '#22d3ee',
+            backgroundColor: 'rgba(34, 211, 238, 0.1)',
+            fill: true
+          }]
+        },
+        options: {
+          ...chartOptions,
+          scales: {
+            ...chartOptions.scales,
+            y: {
+              ...chartOptions.scales.y,
+              min: 0,
+              max: 100
+            }
+          }
+        }
+      });
+
+      // Memory History Chart
+      memoryChart = new Chart(document.getElementById('memory-chart'), {
+        type: 'line',
+        data: {
+          labels: [],
+          datasets: [{
+            label: 'Memory (MB)',
+            data: [],
+            borderColor: '#a855f7',
+            backgroundColor: 'rgba(168, 85, 247, 0.1)',
+            fill: true
+          }]
+        },
+        options: chartOptions
+      });
+
+      // CPU Gauge
+      cpuGauge = new Chart(document.getElementById('cpu-gauge'), {
+        type: 'doughnut',
+        data: {
+          datasets: [{
+            data: [0, 100],
+            backgroundColor: ['#22d3ee', '#334155'],
+            borderWidth: 0,
+            circumference: 180,
+            rotation: 270
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          cutout: '75%',
+          plugins: { legend: { display: false }, tooltip: { enabled: false } }
+        }
+      });
+
+      // Memory Gauge
+      memoryGauge = new Chart(document.getElementById('memory-gauge'), {
+        type: 'doughnut',
+        data: {
+          datasets: [{
+            data: [0, 100],
+            backgroundColor: ['#a855f7', '#334155'],
+            borderWidth: 0,
+            circumference: 180,
+            rotation: 270
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          cutout: '75%',
+          plugins: { legend: { display: false }, tooltip: { enabled: false } }
+        }
+      });
+    }
+
+    // Update charts with new data
+    function updateCharts(status) {
+      const timestamp = Date.now();
+      const now = new Date(timestamp).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+      // Calculate rates (per second)
+      let msgsInRate = 0, msgsOutRate = 0, bytesInRate = 0, bytesOutRate = 0;
+      let shouldAddDataPoint = true;
+
+      if (prevData && !skipNextRateCalculation) {
+        msgsInRate = Math.max(0, status.server.messages.in - prevData.msgsIn);
+        msgsOutRate = Math.max(0, status.server.messages.out - prevData.msgsOut);
+        bytesInRate = Math.max(0, status.server.bytes.in - prevData.bytesIn);
+        bytesOutRate = Math.max(0, status.server.bytes.out - prevData.bytesOut);
+      } else if (skipNextRateCalculation) {
+        // Don't add a data point, just establish baseline
+        shouldAddDataPoint = false;
+        skipNextRateCalculation = false;
+      }
+
+      prevData = {
+        msgsIn: status.server.messages.in,
+        msgsOut: status.server.messages.out,
+        bytesIn: status.server.bytes.in,
+        bytesOut: status.server.bytes.out
+      };
+
+      // Skip adding data point if we're just establishing baseline after history load
+      if (!shouldAddDataPoint) {
+        return;
+      }
+
+      // Add to history
+      history.labels.push(now);
+      history.timestamps.push(timestamp);
+      history.msgsIn.push(msgsInRate);
+      history.msgsOut.push(msgsOutRate);
+      history.bytesIn.push(bytesInRate);
+      history.bytesOut.push(bytesOutRate);
+      history.connections.push(status.server.connections || 0);
+      history.subscriptions.push(status.server.subscriptions || 0);
+      history.cpu.push(status.server.cpu || 0);
+      history.memory.push(status.server.mem || 0);
+
+      // Trim to max data points
+      if (history.labels.length > MAX_DATA_POINTS) {
+        history.labels.shift();
+        history.timestamps.shift();
+        history.msgsIn.shift();
+        history.msgsOut.shift();
+        history.bytesIn.shift();
+        history.bytesOut.shift();
+        history.connections.shift();
+        history.subscriptions.shift();
+        history.cpu.shift();
+        history.memory.shift();
+      }
+
+      // Update Messages Chart
+      messagesChart.data.labels = history.labels;
+      messagesChart.data.datasets[0].data = history.msgsIn;
+      messagesChart.data.datasets[1].data = history.msgsOut;
+      messagesChart.update('none');
+
+      // Update Bytes Chart
+      bytesChart.data.labels = history.labels;
+      bytesChart.data.datasets[0].data = history.bytesIn;
+      bytesChart.data.datasets[1].data = history.bytesOut;
+      bytesChart.update('none');
+
+      // Update Connections Chart
+      connectionsChart.data.labels = history.labels;
+      connectionsChart.data.datasets[0].data = history.connections;
+      connectionsChart.update('none');
+
+      // Update Subscriptions Chart
+      subscriptionsChart.data.labels = history.labels;
+      subscriptionsChart.data.datasets[0].data = history.subscriptions;
+      subscriptionsChart.update('none');
+
+      // Update CPU History Chart
+      cpuChart.data.labels = history.labels;
+      cpuChart.data.datasets[0].data = history.cpu;
+      cpuChart.update('none');
+
+      // Update Memory History Chart (convert to MB for display)
+      memoryChart.data.labels = history.labels;
+      memoryChart.data.datasets[0].data = history.memory.map(m => m / (1024 * 1024));
+      memoryChart.update('none');
+
+      // Update CPU Gauge
+      const cpuPercent = Math.min(100, status.server.cpu || 0);
+      cpuGauge.data.datasets[0].data = [cpuPercent, 100 - cpuPercent];
+      cpuGauge.data.datasets[0].backgroundColor[0] = cpuPercent > 80 ? '#ef4444' : cpuPercent > 60 ? '#f59e0b' : '#22d3ee';
+      cpuGauge.update('none');
+      document.getElementById('cpu-value').textContent = cpuPercent.toFixed(1) + '%';
+
+      // Update Memory Gauge (assume 1GB max for visualization)
+      const memMB = (status.server.mem || 0) / (1024 * 1024);
+      const memPercent = Math.min(100, (memMB / 1024) * 100); // Percentage of 1GB
+      memoryGauge.data.datasets[0].data = [memPercent, 100 - memPercent];
+      memoryGauge.data.datasets[0].backgroundColor[0] = memPercent > 80 ? '#ef4444' : memPercent > 60 ? '#f59e0b' : '#a855f7';
+      memoryGauge.update('none');
+      document.getElementById('memory-value').textContent = formatBytes(status.server.mem);
+
+      // Update trend indicators
+      updateTrend('trend-msgs-in', msgsInRate);
+      updateTrend('trend-msgs-out', msgsOutRate);
+      updateTrend('trend-bytes-in', bytesInRate);
+      updateTrend('trend-bytes-out', bytesOutRate);
+    }
+
+    function updateTrend(elementId, rate) {
+      const el = document.getElementById(elementId);
+      if (rate > 0) {
+        el.className = 'trend up';
+        el.textContent = `+${formatNumber(rate)}/s`;
+      } else {
+        el.className = 'trend';
+        el.textContent = '';
+      }
+    }
+
+    // Navigation
+    document.querySelectorAll('.nav-item').forEach(item => {
+      item.addEventListener('click', () => {
+        const view = item.dataset.view;
+        switchView(view);
+      });
+    });
+
+    function switchView(view, shouldUpdateUrl = true) {
+      currentView = view;
+
+      document.querySelectorAll('.nav-item').forEach(item => {
+        item.classList.toggle('active', item.dataset.view === view);
+      });
+
+      document.querySelectorAll('.view').forEach(v => {
+        v.classList.toggle('active', v.id === `view-${view}`);
+      });
+
+      const titles = {
+        dashboard: 'Dashboard',
+        connections: 'Connections',
+        certificates: 'Certificates',
+        users: 'Users',
+        jetstream: 'JetStream',
+        kvstore: 'KV Store',
+        settings: 'Settings'
+      };
+      document.getElementById('page-title').textContent = titles[view] || view;
+
+      // Update URL
+      if (shouldUpdateUrl) {
+        updateUrl(view);
+      }
+
+      loadViewData(view);
+    }
+
+    function loadViewData(view) {
+      switch (view) {
+        case 'connections':
+          refreshConnections();
+          break;
+        case 'certificates':
+          refreshCertificates();
+          break;
+        case 'users':
+          refreshUsers();
+          break;
+        case 'jetstream':
+          refreshJetStream();
+          break;
+        case 'kvstore':
+          refreshKvBuckets();
+          break;
+      }
+    }
+
+    // API calls
+    async function api(endpoint) {
+      try {
+        const res = await fetch(`/api${endpoint}`);
+        if (res.status === 401) {
+          logout();
+          throw new Error('Session expired');
+        }
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return await res.json();
+      } catch (error) {
+        console.error('API Error:', error);
+        throw error;
+      }
+    }
+
+    async function apiPost(endpoint, data) {
+      try {
+        const res = await fetch(`/api${endpoint}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        });
+        if (res.status === 401) {
+          logout();
+          throw new Error('Session expired');
+        }
+        if (!res.ok) {
+          const error = await res.json();
+          throw new Error(error.error || `HTTP ${res.status}`);
+        }
+        return await res.json();
+      } catch (error) {
+        console.error('API Error:', error);
+        throw error;
+      }
+    }
+
+    async function apiDelete(endpoint) {
+      try {
+        const res = await fetch(`/api${endpoint}`, { method: 'DELETE' });
+        if (res.status === 401) {
+          logout();
+          throw new Error('Session expired');
+        }
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return await res.json();
+      } catch (error) {
+        console.error('API Error:', error);
+        throw error;
+      }
+    }
+
+    // Dashboard
+    async function refreshDashboard() {
+      try {
+        const status = await api('/nats/status');
+
+        // Update connection status
+        const statusDot = document.getElementById('status-dot');
+        const statusText = document.getElementById('status-text');
+        statusDot.classList.add('connected');
+        statusText.textContent = `v${status.server.version} - ${status.server.uptime}`;
+
+        // Update stats
+        document.getElementById('stat-connections').textContent = status.server.connections || 0;
+        document.getElementById('stat-subscriptions').textContent = status.server.subscriptions || 0;
+        document.getElementById('stat-msgs-in').textContent = formatNumber(status.server.messages.in);
+        document.getElementById('stat-msgs-out').textContent = formatNumber(status.server.messages.out);
+        document.getElementById('stat-bytes-in').textContent = formatBytes(status.server.bytes.in);
+        document.getElementById('stat-bytes-out').textContent = formatBytes(status.server.bytes.out);
+
+        // Update JetStream stats
+        if (status.jetstream && status.jetstream.enabled) {
+          document.getElementById('stat-js-streams').textContent = status.jetstream.streams || 0;
+          document.getElementById('stat-js-streams-sub').textContent = `${formatNumber(status.jetstream.messages || 0)} msgs`;
+          document.getElementById('stat-js-consumers').textContent = status.jetstream.consumers || 0;
+          document.getElementById('stat-js-consumers-sub').textContent = `${status.jetstream.accounts || 1} account(s)`;
+          document.getElementById('stat-js-storage').textContent = formatBytes(status.jetstream.storage || 0);
+          document.getElementById('stat-js-storage-sub').textContent = `Memory: ${formatBytes(status.jetstream.memory || 0)}`;
+        } else {
+          document.getElementById('stat-js-streams').textContent = '-';
+          document.getElementById('stat-js-streams-sub').textContent = 'JetStream disabled';
+          document.getElementById('stat-js-consumers').textContent = '-';
+          document.getElementById('stat-js-consumers-sub').textContent = '';
+          document.getElementById('stat-js-storage').textContent = '-';
+          document.getElementById('stat-js-storage-sub').textContent = '';
+        }
+
+        // Update KV stats
+        if (status.kv) {
+          document.getElementById('stat-kv-buckets').textContent = formatNumber(status.kv.buckets || 0);
+          document.getElementById('stat-kv-keys').textContent = formatNumber(status.kv.totalKeys || 0);
+          document.getElementById('stat-kv-size').textContent = formatBytes(status.kv.totalBytes || 0);
+          const avgKeys = status.kv.buckets > 0 ? Math.round(status.kv.totalKeys / status.kv.buckets) : 0;
+          document.getElementById('stat-kv-avg').textContent = formatNumber(avgKeys);
+
+          // Top buckets by size
+          if (status.kv.bucketDetails && status.kv.bucketDetails.length > 0) {
+            const topBuckets = [...status.kv.bucketDetails]
+              .sort((a, b) => b.bytes - a.bytes)
+              .slice(0, 3);
+            document.getElementById('kv-top-list').innerHTML = topBuckets.map(b =>
+              `<div style="display: flex; justify-content: space-between; padding: 2px 0;"><span style="color: var(--text-primary); max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${b.name}</span><span style="color: var(--text-secondary);">${formatBytes(b.bytes)}</span></div>`
+            ).join('');
+          } else {
+            document.getElementById('kv-top-list').textContent = 'No buckets';
+          }
+        }
+
+        // Update slow consumers
+        document.getElementById('stat-slow-consumers').textContent = status.server.slowConsumers || 0;
+        const slowSubEl = document.getElementById('stat-slow-consumers-sub');
+        slowSubEl.textContent = status.server.slowConsumers > 0 ? 'needs attention' : 'all healthy';
+        slowSubEl.style.color = status.server.slowConsumers > 0 ? 'var(--danger)' : 'var(--success)';
+
+        // Update total connections (lifetime)
+        document.getElementById('stat-total-conns-sub').textContent = `${formatNumber(status.server.totalConnections || 0)} lifetime`;
+
+        // Update JetStream API stats
+        if (status.jetstream && status.jetstream.enabled) {
+          document.getElementById('stat-js-api').textContent = formatNumber(status.jetstream.apiTotal || 0);
+          const errors = status.jetstream.apiErrors || 0;
+          document.getElementById('stat-js-api-sub').textContent = errors > 0 ? `${formatNumber(errors)} errors` : 'no errors';
+          document.getElementById('stat-js-api-sub').style.color = errors > 0 ? 'var(--danger)' : 'var(--text-secondary)';
+
+          // Mini streams list - sorted by messages descending
+          if (status.jetstream.streamDetails && status.jetstream.streamDetails.length > 0) {
+            const streams = [...status.jetstream.streamDetails]
+              .sort((a, b) => b.messages - a.messages)
+              .slice(0, 4);
+            document.getElementById('js-streams-mini').innerHTML = streams.map(s =>
+              `<div style="display: flex; justify-content: space-between; padding: 2px 0; font-size: 12px;"><span style="color: var(--text-primary);">${s.name}</span><span style="color: var(--text-secondary);">${formatNumber(s.messages)} msgs</span></div>`
+            ).join('') + (status.jetstream.streamDetails.length > 4 ? `<div style="font-size: 11px; color: var(--text-secondary); margin-top: 4px;">+${status.jetstream.streamDetails.length - 4} more streams</div>` : '');
+          } else {
+            document.getElementById('js-streams-mini').innerHTML = '<div style="font-size: 11px; color: var(--text-secondary);">No streams</div>';
+          }
+        } else {
+          document.getElementById('stat-js-api').textContent = '-';
+          document.getElementById('stat-js-api-sub').textContent = '';
+          document.getElementById('js-streams-mini').innerHTML = '<div style="font-size: 11px; color: var(--text-secondary);">JetStream disabled</div>';
+        }
+
+        // Update charts
+        updateCharts(status);
+
+        // Update server info
+        document.getElementById('server-info').textContent = JSON.stringify(status.server, null, 2);
+      } catch (error) {
+        document.getElementById('status-dot').classList.remove('connected');
+        document.getElementById('status-text').textContent = 'Disconnected';
+      }
+    }
+
+    // Connections
+    async function refreshConnections() {
+      try {
+        const data = await api('/nats/connz?subs=true');
+        const container = document.getElementById('connections-list');
+
+        if (!data.connections || data.connections.length === 0) {
+          container.innerHTML = `<div class="empty-state"><p>No active connections</p></div>`;
+          return;
+        }
+
+        container.innerHTML = `
+          <table class="table">
+            <thead>
+              <tr>
+                <th>CID</th>
+                <th>Name</th>
+                <th>IP</th>
+                <th>Subscriptions</th>
+                <th>Messages In/Out</th>
+                <th>Uptime</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${data.connections.map(conn => `
+                <tr>
+                  <td>${conn.cid}</td>
+                  <td>${conn.name || '-'}</td>
+                  <td>${conn.ip}:${conn.port}</td>
+                  <td>${conn.subscriptions || 0}</td>
+                  <td>${formatNumber(conn.in_msgs)} / ${formatNumber(conn.out_msgs)}</td>
+                  <td>${conn.uptime || '-'}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        `;
+      } catch (error) {
+        document.getElementById('connections-list').innerHTML = `
+          <div class="empty-state">
+            <p>Failed to load connections</p>
+            <p style="font-size: 14px; margin-top: 10px;">${error.message}</p>
+          </div>
+        `;
+      }
+    }
+
+    // Certificates
+    async function refreshCertificates() {
+      try {
+        const caData = await api('/certificates/ca');
+        document.getElementById('ca-info').innerHTML = `
+          <table class="table">
+            <tr><td style="width: 150px;"><strong>Subject</strong></td><td>${caData.ca.subject.CN}</td></tr>
+            <tr><td><strong>Valid From</strong></td><td>${new Date(caData.ca.validFrom).toLocaleDateString()}</td></tr>
+            <tr><td><strong>Valid To</strong></td><td>${new Date(caData.ca.validTo).toLocaleDateString()}</td></tr>
+            <tr><td><strong>Fingerprint</strong></td><td style="font-family: monospace; font-size: 12px;">${caData.ca.fingerprint}</td></tr>
+          </table>
+        `;
+
+        const certsData = await api('/certificates');
+        const container = document.getElementById('certificates-list');
+
+        if (!certsData.certificates || certsData.certificates.length === 0) {
+          container.innerHTML = `
+            <div class="empty-state">
+              <p>No client certificates</p>
+              <button class="btn btn-primary" onclick="showCreateCertModal()" style="margin-top: 20px;">Create Certificate</button>
+            </div>
+          `;
+          return;
+        }
+
+        container.innerHTML = `
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Email</th>
+                <th>Valid Until</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${certsData.certificates.map(cert => `
+                <tr>
+                  <td>${cert.name}</td>
+                  <td>${cert.subject?.emailAddress || cert.subject?.CN || '-'}</td>
+                  <td>${cert.validTo ? new Date(cert.validTo).toLocaleDateString() : '-'}</td>
+                  <td>
+                    ${cert.isExpired
+                      ? '<span class="badge badge-danger">Expired</span>'
+                      : '<span class="badge badge-success">Valid</span>'}
+                  </td>
+                  <td>
+                    <button class="btn btn-secondary btn-sm" onclick="downloadCert('${cert.name}')">Download</button>
+                    <button class="btn btn-danger btn-sm" data-delete-cert="${cert.name}">Delete</button>
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        `;
+
+        // Set up confirm buttons for certificate deletion
+        container.querySelectorAll('[data-delete-cert]').forEach(btn => {
+          const certName = btn.dataset.deleteCert;
+          setupConfirmButton(btn, {
+            originalText: 'Delete',
+            confirmText: 'Confirm Delete',
+            onConfirm: () => executeDeleteCert(certName)
+          });
+        });
+      } catch (error) {
+        document.getElementById('certificates-list').innerHTML = `
+          <div class="empty-state">
+            <p>Failed to load certificates</p>
+            <p style="font-size: 14px; margin-top: 10px;">${error.message}</p>
+          </div>
+        `;
+      }
+    }
+
+    // Users
+    async function refreshUsers() {
+      try {
+        const data = await api('/users');
+        const infoData = await api('/users/info/recommendations');
+        const container = document.getElementById('users-info');
+
+        container.innerHTML = `
+          <h3 style="margin-bottom: 20px;">Authentication Methods</h3>
+          <div style="margin-bottom: 30px;">
+            ${infoData.options.map(opt => {
+              let badge = '';
+              if (opt.name === 'Password-based auth') {
+                const hasPasswordUsers = data.passwordUsers && data.passwordUsers.length > 0;
+                badge = hasPasswordUsers
+                  ? '<span class="badge badge-warning">Not Recommended</span>'
+                  : '<span class="badge badge-success" style="display: inline-flex; align-items: center; gap: 4px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>Zero users</span>';
+              } else if (opt.recommended) {
+                badge = '<span class="badge badge-success">Recommended</span>';
+              }
+              return `
+              <div style="padding: 16px; background: var(--bg-tertiary); border-radius: 8px; margin-bottom: 12px;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <strong>${opt.name}</strong>
+                  ${badge}
+                </div>
+                <p style="color: var(--text-secondary); font-size: 14px; margin-top: 8px;">${opt.description}</p>
+                ${opt.docs ? `<a href="${opt.docs}" target="_blank" style="color: var(--accent); font-size: 14px;">Documentation</a>` : ''}
+              </div>
+            `}).join('')}
+          </div>
+
+          <h3 style="margin-bottom: 20px;">Password-Based Users (from config)</h3>
+          ${data.passwordUsers && data.passwordUsers.length > 0 ? `
+            <div style="background: rgba(245, 158, 11, 0.1); border: 1px solid var(--warning); border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+              <div style="display: flex; align-items: flex-start; gap: 12px;">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--warning)" stroke-width="2" style="flex-shrink: 0; margin-top: 2px;">
+                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                  <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                </svg>
+                <div>
+                  <strong style="color: var(--warning);">Recommended: Disable Password-Based Authentication</strong>
+                  <p style="color: var(--text-secondary); font-size: 14px; margin-top: 8px; margin-bottom: 8px;">
+                    Password-based authentication is less secure than certificate-based or JWT authentication.
+                    For production environments, consider migrating to TLS client certificates.
+                  </p>
+                  <details style="font-size: 14px; color: var(--text-secondary);">
+                    <summary style="cursor: pointer; color: var(--accent);">How to disable password auth in NATS</summary>
+                    <div style="margin-top: 12px; padding: 12px; background: var(--bg-primary); border-radius: 4px;">
+                      <p style="margin-bottom: 8px;">1. Remove the <code style="background: var(--bg-tertiary); padding: 2px 6px; border-radius: 4px;">authorization { users: [...] }</code> block from your NATS config</p>
+                      <p style="margin-bottom: 8px;">2. Enable TLS client certificate verification:</p>
+                      <pre style="background: var(--bg-tertiary); padding: 12px; border-radius: 4px; overflow-x: auto; font-size: 12px;">tls {
+  cert_file: "/path/to/server.crt"
+  key_file: "/path/to/server.key"
+  ca_file: "/path/to/ca.crt"
+  verify: true  # Require client certificates
+}</pre>
+                      <p style="margin-top: 8px;">
+                        <a href="https://docs.nats.io/running-a-nats-service/configuration/securing_nats/auth_intro" target="_blank" style="color: var(--accent);">NATS Authentication Docs</a>
+                      </p>
+                    </div>
+                  </details>
+                </div>
+              </div>
+            </div>
+            <table class="table">
+              <thead><tr><th>Username</th><th>Has Password</th><th>Publish</th><th>Subscribe</th></tr></thead>
+              <tbody>
+                ${data.passwordUsers.map(user => {
+                  const formatPerms = (perms) => {
+                    if (!perms || perms === '-') return '<span style="color: var(--text-secondary);">-</span>';
+                    if (perms.trim() === '>') return '<span class="badge badge-warning" style="font-family: monospace;">*</span>';
+                    // Parse individual permissions from the string
+                    const items = perms.match(/"([^"]+)"/g) || [perms];
+                    return items.map(p => {
+                      const clean = p.replace(/"/g, '').trim();
+                      return `<span style="display: inline-block; background: var(--bg-tertiary); padding: 2px 8px; border-radius: 4px; font-family: monospace; font-size: 11px; margin: 2px;">${clean}</span>`;
+                    }).join('');
+                  };
+                  return `
+                  <tr>
+                    <td>${user.username}</td>
+                    <td>${user.hasPassword ? 'Yes' : 'No'}</td>
+                    <td>${formatPerms(user.permissions.publish)}</td>
+                    <td>${formatPerms(user.permissions.subscribe)}</td>
+                  </tr>
+                `}).join('')}
+              </tbody>
+            </table>
+          ` : '<p style="color: var(--text-secondary);">No password-based users configured</p>'}
+
+          <h3 style="margin: 30px 0 20px;">Certificate-Based Users</h3>
+          ${data.certificateUsers && data.certificateUsers.length > 0 ? `
+            <ul style="list-style: none;">
+              ${data.certificateUsers.map(user => `
+                <li style="padding: 8px 0; border-bottom: 1px solid var(--border);">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2" style="vertical-align: middle; margin-right: 8px;">
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+                  </svg>
+                  ${user}
+                </li>
+              `).join('')}
+            </ul>
+          ` : '<p style="color: var(--text-secondary);">No certificate-based users. Create certificates in the Certificates tab.</p>'}
+        `;
+      } catch (error) {
+        document.getElementById('users-info').innerHTML = `
+          <div class="empty-state"><p>Failed to load users: ${error.message}</p></div>
+        `;
+      }
+    }
+
+    // =====================================
+    // JetStream Functions
+    // =====================================
+
+    // JetStream State
+    let selectedStream = null;
+    let selectedMessage = null;
+    let selectedMessageData = null;
+
+    // Refresh JetStream (called when switching to view)
+    async function refreshJetStream() {
+      await refreshJsStreams();
+    }
+
+    // Refresh streams list
+    async function refreshJsStreams() {
+      const container = document.getElementById('js-streams-list');
+      try {
+        const data = await api('/jetstream/streams');
+
+        if (!data.streams || data.streams.length === 0) {
+          container.innerHTML = `
+            <div class="empty-state">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M2 20h20"/>
+                <path d="M5 20V8l7-5 7 5v12"/>
+                <path d="M9 20v-6h6v6"/>
+              </svg>
+              <p>No JetStream streams found</p>
+              <button class="btn btn-primary" onclick="showCreateStreamModal()" style="margin-top: 20px;">Create Stream</button>
+            </div>
+          `;
+          return;
+        }
+
+        container.innerHTML = `
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Stream Name</th>
+                <th>Messages</th>
+                <th>Size</th>
+                <th>Consumers</th>
+                <th>Retention</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${data.streams.map(stream => `
+                <tr style="cursor: pointer;" onclick="selectStream('${stream.name}')">
+                  <td>
+                    <strong style="color: var(--accent);">${stream.name}</strong>
+                    ${stream.description ? `<br><small style="color: var(--text-secondary);">${stream.description}</small>` : ''}
+                    <br><small style="color: var(--text-secondary); font-family: monospace;">${stream.subjects.join(', ')}</small>
+                  </td>
+                  <td>${formatNumber(stream.state.messages)}</td>
+                  <td>${formatBytes(stream.state.bytes)}</td>
+                  <td>${stream.state.consumerCount}</td>
+                  <td><span class="badge badge-secondary">${stream.retention}</span></td>
+                  <td>
+                    <button class="btn btn-secondary btn-sm" onclick="event.stopPropagation(); selectStream('${stream.name}')">Browse</button>
+                    <button class="btn btn-danger btn-sm" data-delete-stream="${stream.name}">Delete</button>
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        `;
+
+        // Setup confirm buttons for delete
+        container.querySelectorAll('[data-delete-stream]').forEach(btn => {
+          const streamName = btn.dataset.deleteStream;
+          setupConfirmButton(btn, {
+            originalText: 'Delete',
+            confirmText: 'Confirm Delete',
+            onConfirm: () => executeDeleteStream(streamName)
+          });
+        });
+      } catch (error) {
+        container.innerHTML = `
+          <div class="empty-state">
+            <p>Failed to load streams</p>
+            <p style="font-size: 14px; margin-top: 10px; color: var(--danger);">${error.message}</p>
+          </div>
+        `;
+      }
+    }
+
+    // Select a stream to browse
+    function selectStream(name, shouldUpdateUrl = true) {
+      selectedStream = name;
+      selectedMessage = null;
+      selectedMessageData = null;
+      document.getElementById('js-selected-stream').textContent = name;
+
+      // Hide streams list, show detail cards
+      document.getElementById('js-streams-card').style.display = 'none';
+      document.getElementById('js-stream-detail-card').style.display = 'block';
+      document.getElementById('js-consumers-card').style.display = 'block';
+      document.getElementById('js-messages-card').style.display = 'block';
+      document.getElementById('js-message-detail-card').style.display = 'none';
+
+      document.getElementById('js-msg-start-seq').value = '';
+
+      // Update URL
+      if (shouldUpdateUrl) {
+        updateUrl('jetstream', name);
+      }
+
+      // Setup delete and purge buttons
+      setupStreamActionButtons();
+
+      // Load stream details
+      refreshStreamDetail();
+      refreshJsConsumers();
+    }
+
+    // Deselect stream (go back to streams list)
+    function deselectStream(shouldUpdateUrl = true) {
+      selectedStream = null;
+      selectedMessage = null;
+      selectedMessageData = null;
+
+      // Show streams list, hide detail cards
+      document.getElementById('js-streams-card').style.display = 'block';
+      document.getElementById('js-stream-detail-card').style.display = 'none';
+      document.getElementById('js-consumers-card').style.display = 'none';
+      document.getElementById('js-messages-card').style.display = 'none';
+      document.getElementById('js-message-detail-card').style.display = 'none';
+
+      // Update URL
+      if (shouldUpdateUrl) {
+        updateUrl('jetstream');
+      }
+
+      refreshJsStreams();
+    }
+
+    // Setup stream action buttons (delete, purge)
+    function setupStreamActionButtons() {
+      const deleteBtn = document.getElementById('delete-stream-btn');
+      const purgeBtn = document.getElementById('purge-stream-btn');
+
+      // Delete button
+      setupConfirmButton(deleteBtn, {
+        originalText: 'Delete Stream',
+        confirmText: 'Confirm Delete',
+        onConfirm: () => executeDeleteStream(selectedStream)
+      });
+
+      // Purge button
+      setupConfirmButton(purgeBtn, {
+        originalText: 'Purge',
+        confirmText: 'Confirm Purge',
+        onConfirm: () => executePurgeStream(selectedStream)
+      });
+    }
+
+    // Refresh stream detail
+    async function refreshStreamDetail() {
+      if (!selectedStream) return;
+
+      const container = document.getElementById('js-stream-info');
+      try {
+        const data = await api(`/jetstream/streams/${selectedStream}`);
+
+        container.innerHTML = `
+          <div class="stats-grid" style="margin-bottom: 20px;">
+            <div class="stat-card">
+              <div class="label">Messages</div>
+              <div class="value">${formatNumber(data.state.messages)}</div>
+              <div class="subvalue">Seq: ${data.state.firstSeq || 0} - ${data.state.lastSeq || 0}</div>
+            </div>
+            <div class="stat-card purple">
+              <div class="label">Size</div>
+              <div class="value">${formatBytes(data.state.bytes)}</div>
+              <div class="subvalue">${data.storage} storage</div>
+            </div>
+            <div class="stat-card green">
+              <div class="label">Consumers</div>
+              <div class="value">${data.state.consumerCount}</div>
+            </div>
+            <div class="stat-card orange">
+              <div class="label">Replicas</div>
+              <div class="value">${data.replicas}</div>
+              <div class="subvalue">${data.retention} retention</div>
+            </div>
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+            <div>
+              <h4 style="margin-bottom: 10px; color: var(--text-secondary);">Subjects</h4>
+              <div style="font-family: monospace; font-size: 13px; background: var(--bg-tertiary); padding: 12px; border-radius: 8px;">
+                ${data.subjects.map(s => `<div>${s}</div>`).join('')}
+              </div>
+            </div>
+            <div>
+              <h4 style="margin-bottom: 10px; color: var(--text-secondary);">Limits</h4>
+              <div style="font-size: 13px; background: var(--bg-tertiary); padding: 12px; border-radius: 8px;">
+                <div>Max Messages: ${data.maxMsgs > 0 ? formatNumber(data.maxMsgs) : 'Unlimited'}</div>
+                <div>Max Bytes: ${data.maxBytes > 0 ? formatBytes(data.maxBytes) : 'Unlimited'}</div>
+                <div>Max Age: ${data.maxAge > 0 ? formatDuration(data.maxAge) : 'Unlimited'}</div>
+              </div>
+            </div>
+          </div>
+        `;
+      } catch (error) {
+        container.innerHTML = `<div class="empty-state"><p>Failed to load stream: ${error.message}</p></div>`;
+      }
+    }
+
+    // Refresh consumers for selected stream
+    async function refreshJsConsumers() {
+      if (!selectedStream) return;
+
+      const container = document.getElementById('js-consumers-list');
+      try {
+        const data = await api(`/jetstream/streams/${selectedStream}/consumers`);
+
+        if (!data.consumers || data.consumers.length === 0) {
+          container.innerHTML = `
+            <div class="empty-state" style="padding: 30px;">
+              <p>No consumers for this stream</p>
+              <button class="btn btn-primary btn-sm" onclick="showCreateConsumerModal()" style="margin-top: 15px;">Create Consumer</button>
+            </div>
+          `;
+          return;
+        }
+
+        container.innerHTML = `
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Consumer Name</th>
+                <th>Delivered</th>
+                <th>Pending</th>
+                <th>Ack Pending</th>
+                <th>Redelivered</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${data.consumers.map(consumer => `
+                <tr>
+                  <td>
+                    <strong style="color: var(--chart-2);">${consumer.name}</strong>
+                    ${consumer.config.filterSubject ? `<br><small style="color: var(--text-secondary); font-family: monospace;">${consumer.config.filterSubject}</small>` : ''}
+                  </td>
+                  <td>${formatNumber(consumer.delivered?.consumer_seq || 0)}</td>
+                  <td>${formatNumber(consumer.numPending || 0)}</td>
+                  <td>${formatNumber(consumer.numAckPending || 0)}</td>
+                  <td>${formatNumber(consumer.numRedelivered || 0)}</td>
+                  <td>
+                    <button class="btn btn-danger btn-sm" data-delete-consumer="${consumer.name}">Delete</button>
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        `;
+
+        // Setup confirm buttons for delete
+        container.querySelectorAll('[data-delete-consumer]').forEach(btn => {
+          const consumerName = btn.dataset.deleteConsumer;
+          setupConfirmButton(btn, {
+            originalText: 'Delete',
+            confirmText: 'Confirm',
+            onConfirm: () => executeDeleteConsumer(consumerName)
+          });
+        });
+      } catch (error) {
+        container.innerHTML = `<div class="empty-state"><p>Failed to load consumers: ${error.message}</p></div>`;
+      }
+    }
+
+    // Refresh messages for selected stream
+    async function refreshJsMessages() {
+      if (!selectedStream) return;
+
+      const container = document.getElementById('js-messages-list');
+      const startSeq = document.getElementById('js-msg-start-seq').value;
+
+      container.innerHTML = '<div class="loading"><div class="spinner"></div>Loading messages...</div>';
+
+      try {
+        let url = `/jetstream/streams/${selectedStream}/messages?limit=50`;
+        if (startSeq) url += `&startSeq=${startSeq}`;
+
+        const data = await api(url);
+
+        if (!data.messages || data.messages.length === 0) {
+          container.innerHTML = `
+            <div class="empty-state" style="padding: 30px;">
+              <p>No messages in this stream</p>
+              <p style="font-size: 13px; color: var(--text-secondary); margin-top: 10px;">Seq range: ${data.firstSeq || 0} - ${data.lastSeq || 0}</p>
+            </div>
+          `;
+          return;
+        }
+
+        container.innerHTML = `
+          <p style="margin-bottom: 15px; color: var(--text-secondary); font-size: 13px;">
+            Showing ${data.messages.length} messages (seq ${data.messages[0]?.seq || 0} - ${data.messages[data.messages.length - 1]?.seq || 0})
+            | Stream range: ${data.firstSeq} - ${data.lastSeq}
+          </p>
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Seq</th>
+                <th>Subject</th>
+                <th>Time</th>
+                <th>Preview</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${data.messages.map(msg => `
+                <tr style="cursor: pointer;" onclick="selectMessage(${msg.seq})">
+                  <td><strong style="color: var(--accent);">${msg.seq}</strong></td>
+                  <td style="font-family: monospace; font-size: 12px;">${msg.subject}</td>
+                  <td style="font-size: 12px;">${msg.time ? new Date(msg.time).toLocaleString() : '-'}</td>
+                  <td style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: monospace; font-size: 12px;">
+                    ${typeof msg.data === 'object' ? JSON.stringify(msg.data).substring(0, 50) + '...' : String(msg.data).substring(0, 50)}
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        `;
+      } catch (error) {
+        container.innerHTML = `<div class="empty-state"><p>Failed to load messages: ${error.message}</p></div>`;
+      }
+    }
+
+    // Select a message to view
+    async function selectMessage(seq, shouldUpdateUrl = true) {
+      selectedMessage = seq;
+      document.getElementById('js-selected-msg-seq').textContent = seq;
+      document.getElementById('js-message-detail-card').style.display = 'block';
+      document.getElementById('js-message-viewer').innerHTML = '<div class="loading"><div class="spinner"></div>Loading...</div>';
+
+      // Update URL
+      if (shouldUpdateUrl) {
+        updateUrl('jetstream', selectedStream, seq);
+      }
+
+      // Setup delete button
+      const deleteBtn = document.getElementById('delete-message-btn');
+      setupConfirmButton(deleteBtn, {
+        originalText: 'Delete Message',
+        confirmText: 'Confirm Delete',
+        onConfirm: () => executeDeleteMessage(seq)
+      });
+
+      try {
+        const data = await api(`/jetstream/streams/${selectedStream}/messages/${seq}`);
+        selectedMessageData = data;
+        document.getElementById('js-msg-subject').textContent = data.subject;
+        renderJsMessageValue();
+      } catch (error) {
+        document.getElementById('js-message-viewer').innerHTML = `<div style="color: var(--danger);">Failed to load message: ${error.message}</div>`;
+      }
+    }
+
+    // Render message value based on view mode
+    function renderJsMessageValue() {
+      if (!selectedMessageData) return;
+
+      const viewer = document.getElementById('js-message-viewer');
+      const value = selectedMessageData.data;
+      const mode = document.getElementById('js-msg-view-mode').value;
+
+      if (mode === 'raw') {
+        viewer.innerHTML = `<pre style="margin: 0; white-space: pre-wrap; word-break: break-all;">${escapeHtml(typeof value === 'object' ? JSON.stringify(value) : String(value))}</pre>`;
+      } else if (mode === 'pretty') {
+        if (typeof value === 'object') {
+          viewer.innerHTML = `<pre style="margin: 0; white-space: pre-wrap;">${syntaxHighlight(JSON.stringify(value, null, 2))}</pre>`;
+        } else {
+          viewer.innerHTML = `<pre style="margin: 0; white-space: pre-wrap; word-break: break-all;">${escapeHtml(String(value))}</pre>`;
+        }
+      } else if (mode === 'tree') {
+        if (typeof value === 'object') {
+          viewer.innerHTML = renderJsonTree(value);
+        } else {
+          viewer.innerHTML = `<pre style="margin: 0; white-space: pre-wrap; word-break: break-all;">${escapeHtml(String(value))}</pre>`;
+        }
+      }
+    }
+
+    // Show create stream modal
+    function showCreateStreamModal() {
+      document.getElementById('create-stream-form').reset();
+      document.getElementById('create-stream-modal').classList.add('show');
+    }
+
+    // Create stream
+    async function createJsStream() {
+      const form = document.getElementById('create-stream-form');
+      const formData = new FormData(form);
+      const data = Object.fromEntries(formData.entries());
+
+      if (!data.name || !data.name.trim()) {
+        showToast('Stream name is required', 'error');
+        return;
+      }
+
+      if (!data.subjects || !data.subjects.trim()) {
+        showToast('At least one subject is required', 'error');
+        return;
+      }
+
+      // Parse subjects as array
+      data.subjects = data.subjects.split(',').map(s => s.trim()).filter(Boolean);
+
+      // Convert numbers
+      data.maxMsgs = parseInt(data.maxMsgs) || 0;
+      data.maxBytes = parseInt(data.maxBytes) || 0;
+      data.maxAge = (parseInt(data.maxAge) || 0) * 1000000000; // seconds to nanoseconds
+      data.replicas = parseInt(data.replicas) || 1;
+
+      try {
+        await apiPost('/jetstream/streams', data);
+        closeModal('create-stream-modal');
+        form.reset();
+        showToast(`Stream "${data.name}" created successfully`, 'success');
+        refreshJsStreams();
+      } catch (error) {
+        showToast('Failed to create stream: ' + error.message, 'error');
+      }
+    }
+
+    // Delete stream
+    async function executeDeleteStream(name) {
+      try {
+        await apiDelete(`/jetstream/streams/${name}`);
+        if (selectedStream === name) {
+          deselectStream();
+        }
+        showToast(`Stream "${name}" deleted successfully`, 'success');
+        refreshJsStreams();
+      } catch (error) {
+        showToast('Failed to delete stream: ' + error.message, 'error');
+      }
+    }
+
+    // Purge stream
+    async function executePurgeStream(name) {
+      try {
+        await apiPost(`/jetstream/streams/${name}/purge`, {});
+        showToast(`Stream "${name}" purged successfully`, 'success');
+        refreshStreamDetail();
+        refreshJsMessages();
+      } catch (error) {
+        showToast('Failed to purge stream: ' + error.message, 'error');
+      }
+    }
+
+    // Show create consumer modal
+    function showCreateConsumerModal() {
+      document.getElementById('create-consumer-form').reset();
+      document.getElementById('create-consumer-modal').classList.add('show');
+    }
+
+    // Create consumer
+    async function createJsConsumer() {
+      const form = document.getElementById('create-consumer-form');
+      const formData = new FormData(form);
+      const data = Object.fromEntries(formData.entries());
+
+      if (!data.durableName || !data.durableName.trim()) {
+        showToast('Consumer name is required', 'error');
+        return;
+      }
+
+      data.maxDeliver = parseInt(data.maxDeliver) || 0;
+      if (data.maxDeliver === 0) delete data.maxDeliver;
+      if (!data.filterSubject) delete data.filterSubject;
+
+      try {
+        await apiPost(`/jetstream/streams/${selectedStream}/consumers`, data);
+        closeModal('create-consumer-modal');
+        form.reset();
+        showToast(`Consumer "${data.durableName}" created successfully`, 'success');
+        refreshJsConsumers();
+      } catch (error) {
+        showToast('Failed to create consumer: ' + error.message, 'error');
+      }
+    }
+
+    // Delete consumer
+    async function executeDeleteConsumer(name) {
+      try {
+        await apiDelete(`/jetstream/streams/${selectedStream}/consumers/${name}`);
+        showToast(`Consumer "${name}" deleted successfully`, 'success');
+        refreshJsConsumers();
+      } catch (error) {
+        showToast('Failed to delete consumer: ' + error.message, 'error');
+      }
+    }
+
+    // Delete message
+    async function executeDeleteMessage(seq) {
+      try {
+        await apiDelete(`/jetstream/streams/${selectedStream}/messages/${seq}`);
+        document.getElementById('js-message-detail-card').style.display = 'none';
+        selectedMessage = null;
+        selectedMessageData = null;
+        // Update URL to just the stream
+        updateUrl('jetstream', selectedStream);
+        showToast(`Message ${seq} deleted successfully`, 'success');
+        refreshJsMessages();
+      } catch (error) {
+        showToast('Failed to delete message: ' + error.message, 'error');
+      }
+    }
+
+    // Show publish message modal
+    function showPublishMessageModal() {
+      document.getElementById('publish-message-form').reset();
+      document.getElementById('publish-message-modal').classList.add('show');
+    }
+
+    // Publish message
+    async function publishJsMessage() {
+      const subject = document.getElementById('publish-subject').value.trim();
+      const dataStr = document.getElementById('publish-data').value.trim();
+
+      if (!subject) {
+        showToast('Subject is required', 'error');
+        return;
+      }
+
+      if (!dataStr) {
+        showToast('Message data is required', 'error');
+        return;
+      }
+
+      let data;
+      try {
+        data = JSON.parse(dataStr);
+      } catch {
+        data = dataStr;
+      }
+
+      try {
+        const result = await apiPost(`/jetstream/streams/${selectedStream}/publish`, { subject, data });
+        closeModal('publish-message-modal');
+        showToast(`Message published (seq: ${result.seq})`, 'success');
+        refreshJsMessages();
+        refreshStreamDetail();
+      } catch (error) {
+        showToast('Failed to publish message: ' + error.message, 'error');
+      }
+    }
+
+    // Format duration from nanoseconds
+    function formatDuration(ns) {
+      const seconds = ns / 1000000000;
+      if (seconds < 60) return `${seconds}s`;
+      if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
+      if (seconds < 86400) return `${Math.floor(seconds / 3600)}h`;
+      return `${Math.floor(seconds / 86400)}d`;
+    }
+
+    // Certificate actions
+    function showCreateCertModal() {
+      document.getElementById('create-cert-modal').classList.add('show');
+    }
+
+    function closeModal(id) {
+      document.getElementById(id).classList.remove('show');
+    }
+
+    async function createCertificate() {
+      const form = document.getElementById('create-cert-form');
+      const formData = new FormData(form);
+      const data = Object.fromEntries(formData.entries());
+      data.days = parseInt(data.days) || 365;
+
+      try {
+        await apiPost('/certificates', data);
+        closeModal('create-cert-modal');
+        form.reset();
+        refreshCertificates();
+        showToast('Certificate created successfully!', 'success');
+      } catch (error) {
+        showToast('Failed to create certificate: ' + error.message, 'error');
+      }
+    }
+
+    function downloadCert(name) {
+      window.location.href = `/api/certificates/${name}/download`;
+    }
+
+    async function executeDeleteCert(name) {
+      try {
+        await apiDelete(`/certificates/${name}`);
+        refreshCertificates();
+        showToast(`Certificate "${name}" deleted successfully`, 'success');
+      } catch (error) {
+        showToast('Failed to delete certificate: ' + error.message, 'error');
+      }
+    }
+
+    // Utilities
+    function formatNumber(num) {
+      if (num >= 1e9) return (num / 1e9).toFixed(1) + 'B';
+      if (num >= 1e6) return (num / 1e6).toFixed(1) + 'M';
+      if (num >= 1e3) return (num / 1e3).toFixed(1) + 'K';
+      return (num || 0).toString();
+    }
+
+    function formatBytes(bytes) {
+      if (!bytes) return '0 B';
+      const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+      let i = 0;
+      while (bytes >= 1024 && i < units.length - 1) {
+        bytes /= 1024;
+        i++;
+      }
+      return bytes.toFixed(1) + ' ' + units[i];
+    }
+
+    // Load historical data from server
+    async function loadHistoricalData() {
+      try {
+        // Load last 5 minutes of data (300 seconds)
+        const res = await fetch('/api/stats/history?seconds=300');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const result = await res.json();
+
+        if (result.data && result.data.length > 0) {
+          console.log(`Loaded ${result.data.length} historical data points`);
+
+          // Clear existing history
+          history.labels = [];
+          history.timestamps = [];
+          history.msgsIn = [];
+          history.msgsOut = [];
+          history.bytesIn = [];
+          history.bytesOut = [];
+          history.connections = [];
+          history.subscriptions = [];
+          history.cpu = [];
+          history.memory = [];
+
+          // Populate from historical data
+          result.data.forEach(dp => {
+            const date = new Date(dp.timestamp);
+            const label = date.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+            history.labels.push(label);
+            history.timestamps.push(dp.timestamp);
+            history.msgsIn.push(dp.msgsInRate);
+            history.msgsOut.push(dp.msgsOutRate);
+            history.bytesIn.push(dp.bytesInRate);
+            history.bytesOut.push(dp.bytesOutRate);
+            history.connections.push(dp.connections);
+            history.subscriptions.push(dp.subscriptions);
+            history.cpu.push(dp.cpu);
+            history.memory.push(dp.mem);
+          });
+
+          // Update charts with historical data
+          updateChartsFromHistory();
+
+          // Skip the first rate calculation to avoid a spike/dip from timing gap
+          // The first live fetch will just establish the baseline
+          skipNextRateCalculation = true;
+          prevData = null; // Let the first live fetch set this fresh
+
+          historyLoaded = true;
+          console.log('Historical data loaded and charts updated');
+        }
+      } catch (error) {
+        console.error('Failed to load historical data:', error);
+      }
+    }
+
+    // Update all charts from history arrays
+    function updateChartsFromHistory() {
+      // Update Messages Chart
+      messagesChart.data.labels = history.labels;
+      messagesChart.data.datasets[0].data = history.msgsIn;
+      messagesChart.data.datasets[1].data = history.msgsOut;
+      messagesChart.update('none');
+
+      // Update Bytes Chart
+      bytesChart.data.labels = history.labels;
+      bytesChart.data.datasets[0].data = history.bytesIn;
+      bytesChart.data.datasets[1].data = history.bytesOut;
+      bytesChart.update('none');
+
+      // Update Connections Chart
+      connectionsChart.data.labels = history.labels;
+      connectionsChart.data.datasets[0].data = history.connections;
+      connectionsChart.update('none');
+
+      // Update Subscriptions Chart
+      subscriptionsChart.data.labels = history.labels;
+      subscriptionsChart.data.datasets[0].data = history.subscriptions;
+      subscriptionsChart.update('none');
+
+      // Update CPU History Chart
+      cpuChart.data.labels = history.labels;
+      cpuChart.data.datasets[0].data = history.cpu;
+      cpuChart.update('none');
+
+      // Update Memory History Chart (convert to MB for display)
+      memoryChart.data.labels = history.labels;
+      memoryChart.data.datasets[0].data = history.memory.map(m => m / (1024 * 1024));
+      memoryChart.update('none');
+
+      // Update gauges from latest data
+      if (history.cpu.length > 0) {
+        const cpuPercent = Math.min(100, history.cpu[history.cpu.length - 1] || 0);
+        cpuGauge.data.datasets[0].data = [cpuPercent, 100 - cpuPercent];
+        cpuGauge.data.datasets[0].backgroundColor[0] = cpuPercent > 80 ? '#ef4444' : cpuPercent > 60 ? '#f59e0b' : '#22d3ee';
+        cpuGauge.update('none');
+        document.getElementById('cpu-value').textContent = cpuPercent.toFixed(1) + '%';
+      }
+
+      if (history.memory.length > 0) {
+        const mem = history.memory[history.memory.length - 1] || 0;
+        const memMB = mem / (1024 * 1024);
+        const memPercent = Math.min(100, (memMB / 1024) * 100);
+        memoryGauge.data.datasets[0].data = [memPercent, 100 - memPercent];
+        memoryGauge.data.datasets[0].backgroundColor[0] = memPercent > 80 ? '#ef4444' : memPercent > 60 ? '#f59e0b' : '#a855f7';
+        memoryGauge.update('none');
+        document.getElementById('memory-value').textContent = formatBytes(mem);
+      }
+    }
+
+    // =====================================
+    // KV Store Functions
+    // =====================================
+
+    // KV Store State
+    let selectedBucket = null;
+    let selectedKey = null;
+    let selectedKeyValue = null;
+    let kvViewMode = 'pretty';
+
+    // KV API functions
+    async function apiPut(endpoint, data) {
+      try {
+        const res = await fetch(`/api${endpoint}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        });
+        if (!res.ok) {
+          const error = await res.json();
+          throw new Error(error.error || `HTTP ${res.status}`);
+        }
+        return await res.json();
+      } catch (error) {
+        console.error('API Error:', error);
+        throw error;
+      }
+    }
+
+    // Refresh KV Buckets
+    async function refreshKvBuckets() {
+      const container = document.getElementById('kv-buckets-list');
+      try {
+        const data = await api('/kv/buckets');
+
+        if (!data.buckets || data.buckets.length === 0) {
+          container.innerHTML = `
+            <div class="empty-state">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M4 7V4h16v3"/>
+                <path d="M9 20h6"/>
+                <path d="M12 4v16"/>
+                <rect x="2" y="7" width="8" height="6" rx="1"/>
+                <rect x="14" y="7" width="8" height="6" rx="1"/>
+              </svg>
+              <p>No KV buckets found</p>
+              <button class="btn btn-primary" onclick="showCreateBucketModal()" style="margin-top: 20px;">Create Bucket</button>
+            </div>
+          `;
+          return;
+        }
+
+        container.innerHTML = `
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Bucket Name</th>
+                <th>Keys</th>
+                <th>Size</th>
+                <th>History</th>
+                <th>Replicas</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${data.buckets.map(bucket => `
+                <tr style="cursor: pointer;" onclick="selectBucket('${bucket.name}')">
+                  <td>
+                    <strong style="color: var(--accent);">${bucket.name}</strong>
+                    ${bucket.description ? `<br><small style="color: var(--text-secondary);">${bucket.description}</small>` : ''}
+                  </td>
+                  <td>${bucket.state?.messages || 0}</td>
+                  <td>${formatBytes(bucket.state?.bytes || 0)}</td>
+                  <td>${bucket.maxAge ? Math.floor(bucket.maxAge / 1e9) + 's' : 'N/A'}</td>
+                  <td>${bucket.replicas || 1}</td>
+                  <td>
+                    <button class="btn btn-secondary btn-sm" onclick="event.stopPropagation(); selectBucket('${bucket.name}')">Browse</button>
+                    <button class="btn btn-danger btn-sm" data-delete-bucket="${bucket.name}">Delete</button>
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        `;
+
+        // Setup confirm buttons for delete
+        container.querySelectorAll('[data-delete-bucket]').forEach(btn => {
+          const bucketName = btn.dataset.deleteBucket;
+          setupConfirmButton(btn, {
+            originalText: 'Delete',
+            confirmText: 'Confirm Delete',
+            onConfirm: () => executeDeleteBucket(bucketName)
+          });
+        });
+      } catch (error) {
+        container.innerHTML = `
+          <div class="empty-state">
+            <p>Failed to load KV buckets</p>
+            <p style="font-size: 14px; margin-top: 10px; color: var(--danger);">${error.message}</p>
+          </div>
+        `;
+      }
+    }
+
+    // Select a bucket to browse
+    function selectBucket(name, shouldUpdateUrl = true) {
+      selectedBucket = name;
+      selectedKey = null;
+      selectedKeyValue = null;
+      document.getElementById('kv-selected-bucket').textContent = name;
+      // Hide buckets card, show keys card
+      document.getElementById('kv-buckets-card').style.display = 'none';
+      document.getElementById('kv-keys-card').style.display = 'block';
+      document.getElementById('kv-value-card').style.display = 'none';
+      document.getElementById('kv-search').value = '';
+      refreshKvKeys();
+
+      // Update URL
+      if (shouldUpdateUrl) {
+        updateUrl('kvstore', name);
+      }
+
+      // Setup search handler
+      const searchInput = document.getElementById('kv-search');
+      searchInput.oninput = debounce(() => refreshKvKeys(), 300);
+    }
+
+    // Deselect bucket (go back to bucket list)
+    function deselectBucket(shouldUpdateUrl = true) {
+      selectedBucket = null;
+      selectedKey = null;
+      selectedKeyValue = null;
+      // Show buckets card, hide keys and value cards
+      document.getElementById('kv-buckets-card').style.display = 'block';
+      document.getElementById('kv-keys-card').style.display = 'none';
+      document.getElementById('kv-value-card').style.display = 'none';
+
+      // Update URL
+      if (shouldUpdateUrl) {
+        updateUrl('kvstore');
+      }
+    }
+
+    // Refresh keys in selected bucket
+    async function refreshKvKeys() {
+      console.log('refreshKvKeys called, selectedBucket:', selectedBucket);
+      if (!selectedBucket) return;
+
+      const container = document.getElementById('kv-keys-list');
+      const search = document.getElementById('kv-search').value;
+
+      try {
+        const queryParams = new URLSearchParams({ limit: 500 });
+        if (search) queryParams.set('search', search);
+
+        const data = await api(`/kv/buckets/${selectedBucket}/keys?${queryParams}`);
+
+        if (!data.keys || data.keys.length === 0) {
+          container.innerHTML = `
+            <div class="empty-state">
+              <p>${search ? 'No keys matching search' : 'No keys in this bucket'}</p>
+              ${!search ? `<button class="btn btn-primary" onclick="showAddKeyModal()" style="margin-top: 20px;">Add Key</button>` : ''}
+            </div>
+          `;
+          return;
+        }
+
+        container.innerHTML = `
+          <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px;">
+            ${data.keys.map(key => `
+              <div class="key-item" onclick="selectKey('${encodeURIComponent(key)}')" style="padding: 12px; background: var(--bg-tertiary); border-radius: 8px; cursor: pointer; transition: all 0.2s; border: 1px solid transparent; ${selectedKey === key ? 'border-color: var(--accent);' : ''}" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='${selectedKey === key ? 'var(--accent)' : 'transparent'}'">
+                <div style="font-family: monospace; font-size: 13px; color: var(--text-primary); word-break: break-all;">${escapeHtml(key)}</div>
+              </div>
+            `).join('')}
+          </div>
+          <p style="margin-top: 15px; color: var(--text-secondary); font-size: 12px;">Showing ${data.keys.length} key${data.keys.length === 1 ? '' : 's'}</p>
+        `;
+      } catch (error) {
+        container.innerHTML = `
+          <div class="empty-state">
+            <p>Failed to load keys</p>
+            <p style="font-size: 14px; margin-top: 10px; color: var(--danger);">${error.message}</p>
+          </div>
+        `;
+      }
+    }
+
+    // Select a key to view
+    async function selectKey(encodedKey, shouldUpdateUrl = true) {
+      const key = decodeURIComponent(encodedKey);
+      selectedKey = key;
+
+      document.getElementById('kv-selected-key').textContent = key;
+      document.getElementById('kv-value-card').style.display = 'block';
+      document.getElementById('kv-value-viewer').innerHTML = '<div class="loading"><div class="spinner"></div>Loading...</div>';
+
+      // Update URL
+      if (shouldUpdateUrl) {
+        updateUrl('kvstore', selectedBucket, key);
+      }
+
+      // Setup delete button with confirm behavior
+      setupDeleteKeyButton();
+
+      try {
+        const data = await api(`/kv/buckets/${selectedBucket}/keys/${encodeURIComponent(key)}`);
+        selectedKeyValue = data;
+        document.getElementById('kv-key-revision').textContent = `Rev ${data.revision}`;
+        renderKeyValue();
+      } catch (error) {
+        document.getElementById('kv-value-viewer').innerHTML = `
+          <div style="color: var(--danger);">Failed to load key: ${error.message}</div>
+        `;
+      }
+    }
+
+    // Render key value based on view mode
+    function renderKeyValue() {
+      if (!selectedKeyValue) return;
+
+      const viewer = document.getElementById('kv-value-viewer');
+      const value = selectedKeyValue.value;
+      const mode = document.getElementById('kv-view-mode').value;
+
+      if (mode === 'raw') {
+        viewer.innerHTML = `<pre style="margin: 0; white-space: pre-wrap; word-break: break-all;">${escapeHtml(typeof value === 'object' ? JSON.stringify(value) : String(value))}</pre>`;
+      } else if (mode === 'pretty') {
+        if (typeof value === 'object') {
+          viewer.innerHTML = `<pre style="margin: 0; white-space: pre-wrap;">${syntaxHighlight(JSON.stringify(value, null, 2))}</pre>`;
+        } else {
+          viewer.innerHTML = `<pre style="margin: 0; white-space: pre-wrap; word-break: break-all;">${escapeHtml(String(value))}</pre>`;
+        }
+      } else if (mode === 'tree') {
+        if (typeof value === 'object') {
+          viewer.innerHTML = renderJsonTree(value);
+        } else {
+          viewer.innerHTML = `<pre style="margin: 0; white-space: pre-wrap; word-break: break-all;">${escapeHtml(String(value))}</pre>`;
+        }
+      }
+    }
+
+    // Change view mode
+    function changeViewMode() {
+      renderKeyValue();
+    }
+
+    // Render JSON as expandable tree
+    function renderJsonTree(obj, indent = 0) {
+      if (obj === null) return '<span style="color: #f59e0b;">null</span>';
+      if (typeof obj !== 'object') {
+        if (typeof obj === 'string') return `<span style="color: #22c55e;">"${escapeHtml(obj)}"</span>`;
+        if (typeof obj === 'number') return `<span style="color: #22d3ee;">${obj}</span>`;
+        if (typeof obj === 'boolean') return `<span style="color: #a855f7;">${obj}</span>`;
+        return escapeHtml(String(obj));
+      }
+
+      const isArray = Array.isArray(obj);
+      const entries = Object.entries(obj);
+      const pad = '  '.repeat(indent);
+
+      if (entries.length === 0) {
+        return isArray ? '[]' : '{}';
+      }
+
+      let html = `<div class="json-tree-node">`;
+      html += `<span class="json-tree-toggle" onclick="toggleTreeNode(this)" style="cursor: pointer; user-select: none;">`;
+      html += `<span class="toggle-icon" style="display: inline-block; width: 16px;">-</span>`;
+      html += isArray ? '[' : '{';
+      html += `</span>`;
+      html += `<div class="json-tree-content" style="margin-left: 20px;">`;
+
+      entries.forEach(([key, val], idx) => {
+        html += `<div>`;
+        if (!isArray) {
+          html += `<span style="color: #ec4899;">"${escapeHtml(key)}"</span>: `;
+        }
+        html += renderJsonTree(val, indent + 1);
+        if (idx < entries.length - 1) html += ',';
+        html += `</div>`;
+      });
+
+      html += `</div>`;
+      html += isArray ? ']' : '}';
+      html += `</div>`;
+
+      return html;
+    }
+
+    // Toggle tree node
+    function toggleTreeNode(el) {
+      const content = el.nextElementSibling;
+      const icon = el.querySelector('.toggle-icon');
+      if (content.style.display === 'none') {
+        content.style.display = 'block';
+        icon.textContent = '-';
+      } else {
+        content.style.display = 'none';
+        icon.textContent = '+';
+      }
+    }
+
+    // Syntax highlight JSON
+    function syntaxHighlight(json) {
+      return json.replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, (match) => {
+        let cls = 'color: #22d3ee'; // number
+        if (/^"/.test(match)) {
+          if (/:$/.test(match)) {
+            cls = 'color: #ec4899'; // key
+          } else {
+            cls = 'color: #22c55e'; // string
+          }
+        } else if (/true|false/.test(match)) {
+          cls = 'color: #a855f7'; // boolean
+        } else if (/null/.test(match)) {
+          cls = 'color: #f59e0b'; // null
+        }
+        return `<span style="${cls}">${match}</span>`;
+      });
+    }
+
+    // Show create bucket modal
+    function showCreateBucketModal() {
+      document.getElementById('create-bucket-form').reset();
+      document.getElementById('create-bucket-modal').classList.add('show');
+    }
+
+    // Create bucket
+    async function createKvBucket() {
+      const form = document.getElementById('create-bucket-form');
+      const formData = new FormData(form);
+      const data = Object.fromEntries(formData.entries());
+
+      if (!data.name || !data.name.trim()) {
+        showToast('Bucket name is required', 'error');
+        return;
+      }
+
+      data.history = parseInt(data.history) || 1;
+      data.replicas = parseInt(data.replicas) || 1;
+      data.maxAge = parseInt(data.maxAge) || 0;
+      data.maxBytes = parseInt(data.maxBytes) || 0;
+
+      try {
+        await apiPost('/kv/buckets', data);
+        closeModal('create-bucket-modal');
+        form.reset();
+        showToast(`Bucket "${data.name}" created successfully`, 'success');
+        refreshKvBuckets();
+      } catch (error) {
+        showToast('Failed to create bucket: ' + error.message, 'error');
+      }
+    }
+
+    // Delete bucket (called by confirm button)
+    async function executeDeleteBucket(name) {
+      try {
+        await apiDelete(`/kv/buckets/${name}`);
+        if (selectedBucket === name) {
+          deselectBucket();
+        }
+        showToast(`Bucket "${name}" deleted successfully`, 'success');
+        refreshKvBuckets();
+      } catch (error) {
+        showToast('Failed to delete bucket: ' + error.message, 'error');
+      }
+    }
+
+    // Show add key modal
+    function showAddKeyModal() {
+      document.getElementById('kv-key-modal-title').textContent = 'Add Key';
+      document.getElementById('kv-key-form').reset();
+      document.getElementById('kv-key-input').disabled = false;
+      document.getElementById('kv-key-modal').classList.add('show');
+    }
+
+    // Show edit key modal
+    function showEditKeyModal() {
+      if (!selectedKey || !selectedKeyValue) return;
+
+      document.getElementById('kv-key-modal-title').textContent = 'Edit Key';
+      document.getElementById('kv-key-input').value = selectedKey;
+      document.getElementById('kv-key-input').disabled = true;
+
+      const value = selectedKeyValue.value;
+      document.getElementById('kv-value-input').value = typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value);
+
+      document.getElementById('kv-key-modal').classList.add('show');
+    }
+
+    // Save key (add or edit)
+    async function saveKvKey() {
+      const keyInput = document.getElementById('kv-key-input');
+      const valueInput = document.getElementById('kv-value-input');
+      const key = keyInput.value.trim();
+      let value = valueInput.value;
+
+      if (!key) {
+        showToast('Key is required', 'error');
+        return;
+      }
+
+      // Try to parse as JSON
+      try {
+        value = JSON.parse(value);
+      } catch {
+        // Keep as string
+      }
+
+      try {
+        await apiPut(`/kv/buckets/${selectedBucket}/keys/${encodeURIComponent(key)}`, { value });
+        closeModal('kv-key-modal');
+        showToast(`Key "${key}" saved successfully`, 'success');
+        refreshKvKeys();
+        if (selectedKey === key) {
+          selectKey(encodeURIComponent(key));
+        }
+      } catch (error) {
+        showToast('Failed to save key: ' + error.message, 'error');
+      }
+    }
+
+    // Delete key (called by confirm button)
+    async function executeDeleteKey() {
+      if (!selectedKey) return;
+
+      try {
+        const keyToDelete = selectedKey;
+        await apiDelete(`/kv/buckets/${selectedBucket}/keys/${encodeURIComponent(selectedKey)}`);
+        selectedKey = null;
+        selectedKeyValue = null;
+        document.getElementById('kv-value-card').style.display = 'none';
+        showToast(`Key "${keyToDelete}" deleted successfully`, 'success');
+        refreshKvKeys();
+      } catch (error) {
+        showToast('Failed to delete key: ' + error.message, 'error');
+      }
+    }
+
+    // Setup delete key confirm button
+    let deleteKeyBtnCleanup = null;
+    function setupDeleteKeyButton() {
+      if (deleteKeyBtnCleanup) deleteKeyBtnCleanup();
+      const btn = document.getElementById('delete-key-btn');
+      if (btn) {
+        deleteKeyBtnCleanup = setupConfirmButton(btn, {
+          originalText: 'Delete',
+          confirmText: 'Confirm Delete',
+          onConfirm: executeDeleteKey
+        });
+      }
+    }
+
+    // Show rename key modal
+    function showRenameKeyModal() {
+      if (!selectedKey) return;
+
+      document.getElementById('rename-current-key').value = selectedKey;
+      document.getElementById('rename-new-key').value = '';
+      document.getElementById('rename-key-modal').classList.add('show');
+    }
+
+    // Rename key
+    async function renameKvKey() {
+      const newKey = document.getElementById('rename-new-key').value.trim();
+      if (!newKey) {
+        showToast('New key name is required', 'error');
+        return;
+      }
+
+      try {
+        const oldKey = selectedKey;
+        await apiPost(`/kv/buckets/${selectedBucket}/keys/${encodeURIComponent(selectedKey)}/rename`, { newKey });
+        closeModal('rename-key-modal');
+        selectedKey = newKey;
+        showToast(`Key renamed from "${oldKey}" to "${newKey}"`, 'success');
+        refreshKvKeys();
+        selectKey(encodeURIComponent(newKey));
+      } catch (error) {
+        showToast('Failed to rename key: ' + error.message, 'error');
+      }
+    }
+
+    // Show key history
+    async function showKeyHistory() {
+      if (!selectedKey) return;
+
+      document.getElementById('history-key-name').textContent = selectedKey;
+      document.getElementById('key-history-content').innerHTML = '<div class="loading"><div class="spinner"></div>Loading history...</div>';
+      document.getElementById('key-history-modal').classList.add('show');
+
+      try {
+        const data = await api(`/kv/buckets/${selectedBucket}/keys/${encodeURIComponent(selectedKey)}/history`);
+
+        if (!data.history || data.history.length === 0) {
+          document.getElementById('key-history-content').innerHTML = '<p>No history available</p>';
+          return;
+        }
+
+        document.getElementById('key-history-content').innerHTML = `
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Revision</th>
+                <th>Operation</th>
+                <th>Value</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${data.history.map(entry => `
+                <tr>
+                  <td><strong>${entry.revision}</strong></td>
+                  <td>
+                    <span class="badge ${entry.operation === 'PUT' ? 'badge-success' : entry.operation === 'DEL' ? 'badge-danger' : 'badge-warning'}">${entry.operation}</span>
+                  </td>
+                  <td>
+                    <div style="max-width: 400px; max-height: 100px; overflow: auto; font-family: monospace; font-size: 12px; background: var(--bg-primary); padding: 8px; border-radius: 4px;">
+                      ${entry.value !== null ? escapeHtml(typeof entry.value === 'object' ? JSON.stringify(entry.value, null, 2) : String(entry.value)) : '<em style="color: var(--text-secondary);">(deleted)</em>'}
+                    </div>
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        `;
+      } catch (error) {
+        document.getElementById('key-history-content').innerHTML = `<p style="color: var(--danger);">Failed to load history: ${error.message}</p>`;
+      }
+    }
+
+    // Utility: escape HTML
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // Utility: debounce
+    function debounce(func, wait) {
+      let timeout;
+      return function executedFunction(...args) {
+        const later = () => {
+          clearTimeout(timeout);
+          func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+      };
+    }
+
+    // =====================================
+    // Toast Notification System
+    // =====================================
+    const toastContainer = document.createElement('div');
+    toastContainer.id = 'toast-container';
+    toastContainer.style.cssText = 'position: fixed; top: 20px; right: 20px; z-index: 10000; display: flex; flex-direction: column; gap: 10px;';
+    document.body.appendChild(toastContainer);
+
+    function showToast(message, type = 'info', duration = 4000) {
+      const toast = document.createElement('div');
+      toast.style.cssText = `
+        padding: 12px 20px;
+        border-radius: 8px;
+        color: white;
+        font-size: 14px;
+        max-width: 350px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        animation: slideIn 0.3s ease;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      `;
+
+      const colors = {
+        success: 'var(--success)',
+        error: 'var(--danger)',
+        warning: 'var(--warning)',
+        info: 'var(--accent)'
+      };
+      toast.style.background = colors[type] || colors.info;
+
+      const icons = {
+        success: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>',
+        error: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>',
+        warning: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
+        info: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>'
+      };
+
+      toast.innerHTML = `${icons[type] || icons.info}<span>${escapeHtml(message)}</span>`;
+      toastContainer.appendChild(toast);
+
+      setTimeout(() => {
+        toast.style.animation = 'slideOut 0.3s ease forwards';
+        setTimeout(() => toast.remove(), 300);
+      }, duration);
+    }
+
+    // Add toast animations to document
+    const toastStyles = document.createElement('style');
+    toastStyles.textContent = `
+      @keyframes slideIn {
+        from { transform: translateX(100%); opacity: 0; }
+        to { transform: translateX(0); opacity: 1; }
+      }
+      @keyframes slideOut {
+        from { transform: translateX(0); opacity: 1; }
+        to { transform: translateX(100%); opacity: 0; }
+      }
+    `;
+    document.head.appendChild(toastStyles);
+
+    // =====================================
+    // Confirm Button Component
+    // =====================================
+    // Usage: <button class="btn btn-danger btn-sm" data-confirm-btn data-confirm-text="Confirm Delete" data-action="deleteKvBucket('name')">Delete</button>
+    // Or programmatically: setupConfirmButton(element, { confirmText: 'Confirm Delete', onConfirm: async () => {...} })
+
+    function setupConfirmButton(btn, options = {}) {
+      const originalText = options.originalText || btn.textContent;
+      const confirmText = options.confirmText || 'Confirm';
+      const onConfirm = options.onConfirm;
+      const delay = options.delay || 1000;
+
+      let isConfirmState = false;
+      let enableTimeout = null;
+
+      function resetButton() {
+        isConfirmState = false;
+        btn.textContent = originalText;
+        btn.disabled = false;
+        btn.style.opacity = '';
+        if (enableTimeout) {
+          clearTimeout(enableTimeout);
+          enableTimeout = null;
+        }
+      }
+
+      function enterConfirmState(e) {
+        if (e) e.stopPropagation();
+
+        if (isConfirmState) {
+          // Already in confirm state, execute the action
+          if (onConfirm) {
+            btn.disabled = true;
+            btn.textContent = 'Working...';
+            Promise.resolve(onConfirm()).finally(() => {
+              resetButton();
+            });
+          }
+          return;
+        }
+
+        // Enter confirm state
+        isConfirmState = true;
+        btn.textContent = confirmText;
+        btn.disabled = true;
+        btn.style.opacity = '0.7';
+
+        // Enable after delay
+        enableTimeout = setTimeout(() => {
+          btn.disabled = false;
+          btn.style.opacity = '';
+        }, delay);
+      }
+
+      function handleBlur() {
+        // Reset on blur, but with small delay to allow click to register
+        setTimeout(() => {
+          if (!btn.matches(':hover') && !btn.matches(':focus')) {
+            resetButton();
+          }
+        }, 150);
+      }
+
+      btn.addEventListener('click', enterConfirmState);
+      btn.addEventListener('blur', handleBlur);
+      btn.addEventListener('mouseleave', () => {
+        if (isConfirmState && !btn.matches(':focus')) {
+          resetButton();
+        }
+      });
+
+      // Return cleanup function
+      return () => {
+        btn.removeEventListener('click', enterConfirmState);
+        btn.removeEventListener('blur', handleBlur);
+        resetButton();
+      };
+    }
+
+    // Helper to create confirm button HTML with inline handler setup
+    function createConfirmButton(text, confirmText, onConfirmFn, btnClass = 'btn btn-danger btn-sm') {
+      const btnId = 'confirm-btn-' + Math.random().toString(36).substr(2, 9);
+      // Schedule setup after render
+      setTimeout(() => {
+        const btn = document.getElementById(btnId);
+        if (btn) {
+          setupConfirmButton(btn, {
+            originalText: text,
+            confirmText: confirmText,
+            onConfirm: onConfirmFn
+          });
+        }
+      }, 0);
+      return `<button id="${btnId}" class="${btnClass}">${text}</button>`;
+    }
+
+    // Initialize app (called after successful login or session check)
+    let appInitialized = false;
+    let refreshInterval = null;
+
+    function initApp() {
+      if (appInitialized) return;
+      appInitialized = true;
+
+      initCharts();
+
+      // Handle browser back/forward navigation
+      window.addEventListener('popstate', () => {
+        if (isAuthenticated) {
+          navigateFromUrl();
+        }
+      });
+
+      // Initialize routing from URL on page load
+      navigateFromUrl();
+
+      loadHistoricalData().then(() => {
+        refreshDashboard();
+      });
+
+      // Auto-refresh every second when on dashboard
+      refreshInterval = setInterval(() => {
+        if (isAuthenticated && currentView === 'dashboard') {
+          refreshDashboard();
+        }
+      }, REFRESH_INTERVAL);
+    }
+
+    // Start: Check session and initialize if authenticated
+    (async function start() {
+      // Hide app initially
+      document.querySelector('.app').style.display = 'none';
+
+      const authenticated = await checkSession();
+      if (authenticated) {
+        initApp();
+      }
+    })();
+  </script>
+</body>
+</html>
