@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Natsable - NATS Management GUI</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/node-forge@1.3.1/dist/forge.min.js"></script>
   <style>
     :root {
       --bg-primary: #0f172a;
@@ -1834,130 +1835,128 @@
       }
     }
 
-    // Convert SEC1 EC key to PKCS#8 format for Web Crypto API
+    // Parse and sign using the appropriate method based on key type
+    async function parseAndSign(pemKey, challenge) {
+      const isEc = pemKey.includes('EC PRIVATE KEY');
+      const isRsa = pemKey.includes('RSA PRIVATE KEY');
+      const isPkcs8 = pemKey.includes('BEGIN PRIVATE KEY');
+
+      if (isRsa) {
+        // Use forge for RSA keys
+        const privateKey = forge.pki.privateKeyFromPem(pemKey);
+        const md = forge.md.sha256.create();
+        md.update(challenge, 'utf8');
+        const signature = privateKey.sign(md);
+        return forge.util.encode64(signature);
+      }
+
+      if (isEc || isPkcs8) {
+        // Use Web Crypto for EC keys
+        const pemBody = pemKey
+          .replace(/-----BEGIN (?:EC )?PRIVATE KEY-----/, '')
+          .replace(/-----END (?:EC )?PRIVATE KEY-----/, '')
+          .replace(/\s/g, '');
+
+        const binaryString = atob(pemBody);
+        let bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+
+        // For EC SEC1 format, wrap in PKCS#8
+        if (isEc) {
+          bytes = sec1ToPkcs8(bytes);
+        }
+
+        // Try different algorithms
+        let cryptoKey = null;
+        for (const algo of [
+          { name: 'ECDSA', namedCurve: 'P-256' },
+          { name: 'ECDSA', namedCurve: 'P-384' },
+          { name: 'ECDSA', namedCurve: 'P-521' },
+          { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }
+        ]) {
+          try {
+            cryptoKey = await crypto.subtle.importKey('pkcs8', bytes, algo, false, ['sign']);
+            break;
+          } catch {
+            continue;
+          }
+        }
+
+        if (!cryptoKey) {
+          throw new Error('Unable to import key');
+        }
+
+        // Sign the challenge
+        const encoder = new TextEncoder();
+        const data = encoder.encode(challenge);
+
+        let signAlgo;
+        if (cryptoKey.algorithm.name === 'ECDSA') {
+          signAlgo = { name: 'ECDSA', hash: 'SHA-256' };
+        } else {
+          signAlgo = { name: 'RSASSA-PKCS1-v1_5' };
+        }
+
+        const signature = await crypto.subtle.sign(signAlgo, cryptoKey, data);
+        let sigBytes = new Uint8Array(signature);
+
+        // Convert ECDSA P1363 to DER format
+        if (cryptoKey.algorithm.name === 'ECDSA') {
+          sigBytes = p1363ToDer(sigBytes);
+        }
+
+        // Convert to base64
+        let binary = '';
+        for (let i = 0; i < sigBytes.length; i++) {
+          binary += String.fromCharCode(sigBytes[i]);
+        }
+        return btoa(binary);
+      }
+
+      throw new Error('Unsupported key format');
+    }
+
+    // Convert SEC1 EC key to PKCS#8 format
     function sec1ToPkcs8(sec1Bytes) {
-      // PKCS#8 structure:
-      // SEQUENCE {
-      //   INTEGER 0 (version)
-      //   SEQUENCE { OID ecPublicKey, OID prime256v1 } (AlgorithmIdentifier)
-      //   OCTET STRING { SEC1 key }
-      // }
-
       const sec1Length = sec1Bytes.length;
-
-      // AlgorithmIdentifier for EC P-256 (21 bytes total)
       const algoId = [
-        0x30, 0x13,  // SEQUENCE, length 19
-        0x06, 0x07, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x02, 0x01,  // OID 1.2.840.10045.2.1 (ecPublicKey)
-        0x06, 0x08, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x03, 0x01, 0x07  // OID 1.2.840.10045.3.1.7 (prime256v1)
+        0x30, 0x13,
+        0x06, 0x07, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x02, 0x01,
+        0x06, 0x08, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x03, 0x01, 0x07
       ];
-
-      // Build the OCTET STRING for the SEC1 key
-      const octetString = [];
-      octetString.push(0x04);  // OCTET STRING tag
+      const octetString = [0x04];
       if (sec1Length > 127) {
         octetString.push(0x81, sec1Length);
       } else {
         octetString.push(sec1Length);
       }
-
-      // Version: INTEGER 0 (3 bytes: 02 01 00)
       const version = [0x02, 0x01, 0x00];
-
-      // Total inner content length
       const innerLength = version.length + algoId.length + octetString.length + sec1Length;
-
-      // Build outer SEQUENCE
-      const result = [];
-      result.push(0x30);  // SEQUENCE tag
+      const result = [0x30];
       if (innerLength > 127) {
         result.push(0x81, innerLength);
       } else {
         result.push(innerLength);
       }
-
-      // Append all parts
-      result.push(...version);
-      result.push(...algoId);
-      result.push(...octetString);
-
-      // Create final array with SEC1 bytes
+      result.push(...version, ...algoId, ...octetString);
       const pkcs8 = new Uint8Array(result.length + sec1Bytes.length);
       pkcs8.set(result);
       pkcs8.set(sec1Bytes, result.length);
-
       return pkcs8;
     }
 
-    // Convert PEM private key to CryptoKey for Web Crypto API
-    async function importPrivateKey(pemKey) {
-      // Determine key type
-      const isEc = pemKey.includes('EC PRIVATE KEY');
-      const isRsa = pemKey.includes('RSA PRIVATE KEY');
-      const isPkcs8 = pemKey.includes('PRIVATE KEY') && !isEc && !isRsa;
-
-      // Remove PEM headers and decode base64
-      const pemBody = pemKey
-        .replace(/-----BEGIN (?:EC |RSA )?PRIVATE KEY-----/, '')
-        .replace(/-----END (?:EC |RSA )?PRIVATE KEY-----/, '')
-        .replace(/\s/g, '');
-
-      const binaryString = atob(pemBody);
-      let bytes = new Uint8Array(binaryString.length);
-      for (let i = 0; i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-      }
-
-      try {
-        if (isPkcs8) {
-          // PKCS#8 format - try EC first, then RSA
-          for (const algo of [
-            { name: 'ECDSA', namedCurve: 'P-256' },
-            { name: 'ECDSA', namedCurve: 'P-384' },
-            { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }
-          ]) {
-            try {
-              return await crypto.subtle.importKey('pkcs8', bytes, algo, false, ['sign']);
-            } catch {
-              continue;
-            }
-          }
-          throw new Error('Unsupported key type');
-        } else if (isEc) {
-          // SEC1 EC key - convert to PKCS#8 first
-          const pkcs8Bytes = sec1ToPkcs8(bytes);
-          return await crypto.subtle.importKey(
-            'pkcs8',
-            pkcs8Bytes,
-            { name: 'ECDSA', namedCurve: 'P-256' },
-            false,
-            ['sign']
-          );
-        } else if (isRsa) {
-          // RSA PKCS#1 format - not directly supported, would need conversion
-          throw new Error('RSA PKCS#1 format not supported. Please convert to PKCS#8.');
-        }
-        throw new Error('Unknown key format');
-      } catch (e) {
-        throw new Error('Failed to import private key: ' + e.message);
-      }
-    }
-
-    // Convert IEEE P1363 signature to DER format (required by Node.js)
+    // Convert P1363 signature to DER format
     function p1363ToDer(p1363Sig) {
-      const r = p1363Sig.slice(0, 32);
-      const s = p1363Sig.slice(32, 64);
+      const half = p1363Sig.length / 2;
+      const r = p1363Sig.slice(0, half);
+      const s = p1363Sig.slice(half);
 
-      // Remove leading zeros but keep one if needed
-      function trimZeros(bytes) {
+      function toSignedInt(bytes) {
         let i = 0;
         while (i < bytes.length - 1 && bytes[i] === 0) i++;
-        return bytes.slice(i);
-      }
-
-      // Add leading zero if high bit is set (to prevent negative interpretation)
-      function toSignedInt(bytes) {
-        const trimmed = trimZeros(bytes);
+        const trimmed = bytes.slice(i);
         if (trimmed[0] & 0x80) {
           const result = new Uint8Array(trimmed.length + 1);
           result[0] = 0;
@@ -1969,44 +1968,9 @@
 
       const rInt = toSignedInt(r);
       const sInt = toSignedInt(s);
-
-      // Build DER: SEQUENCE { INTEGER r, INTEGER s }
       const rDer = [0x02, rInt.length, ...rInt];
       const sDer = [0x02, sInt.length, ...sInt];
-      const seqLen = rDer.length + sDer.length;
-      const der = new Uint8Array([0x30, seqLen, ...rDer, ...sDer]);
-
-      return der;
-    }
-
-    // Sign a challenge using the private key
-    async function signChallenge(challenge, cryptoKey) {
-      const encoder = new TextEncoder();
-      const data = encoder.encode(challenge);
-
-      // Determine algorithm based on key type
-      let algorithm;
-      const isEcdsa = cryptoKey.algorithm.name === 'ECDSA';
-      if (isEcdsa) {
-        algorithm = { name: 'ECDSA', hash: 'SHA-256' };
-      } else {
-        algorithm = { name: 'RSASSA-PKCS1-v1_5' };
-      }
-
-      const signature = await crypto.subtle.sign(algorithm, cryptoKey, data);
-      let sigBytes = new Uint8Array(signature);
-
-      // Convert ECDSA signature from P1363 to DER format for Node.js compatibility
-      if (isEcdsa) {
-        sigBytes = p1363ToDer(sigBytes);
-      }
-
-      // Convert to base64
-      let binary = '';
-      for (let i = 0; i < sigBytes.length; i++) {
-        binary += String.fromCharCode(sigBytes[i]);
-      }
-      return btoa(binary);
+      return new Uint8Array([0x30, rDer.length + sDer.length, ...rDer, ...sDer]);
     }
 
     // Login handler
@@ -2033,16 +1997,14 @@
           return;
         }
 
-        // Step 2: Import the private key and sign the challenge
-        let cryptoKey;
+        // Step 2: Sign the challenge with the private key
+        let signature;
         try {
-          cryptoKey = await importPrivateKey(keyFileContent);
+          signature = await parseAndSign(keyFileContent, challengeData.challenge);
         } catch (e) {
           showLoginError('Failed to process private key: ' + e.message);
           return;
         }
-
-        const signature = await signChallenge(challengeData.challenge, cryptoKey);
 
         // Step 3: Complete login with signature
         const loginRes = await fetch('/api/auth/login', {
