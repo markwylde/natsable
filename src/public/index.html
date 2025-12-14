@@ -818,22 +818,33 @@
         <span>Natsable</span>
       </div>
       <h2 class="login-title">Welcome Back</h2>
-      <p class="login-subtitle">Upload your credentials file to access the dashboard</p>
+      <p class="login-subtitle">Upload your certificate and key to access the dashboard</p>
 
       <div class="login-error" id="login-error"></div>
+
+      <div class="file-upload-area" id="cert-upload-area">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+        </svg>
+        <p>Certificate (.crt)</p>
+        <p class="file-name" id="cert-file-name" style="display: none;"></p>
+        <input type="file" id="cert-file-input" accept=".crt,.pem" style="display: none;">
+      </div>
 
       <div class="file-upload-area" id="key-upload-area">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>
         </svg>
-        <p>Drop your credentials file here<br>or click to browse</p>
-        <p style="font-size: 12px; color: var(--text-secondary); margin-top: 8px;">.pem file from Certificates page</p>
+        <p>Private Key (.key)</p>
         <p class="file-name" id="key-file-name" style="display: none;"></p>
-        <input type="file" id="key-file-input" accept=".pem,.key" style="display: none;">
+        <input type="file" id="key-file-input" accept=".key,.pem" style="display: none;">
       </div>
 
+      <button class="btn btn-primary login-btn" id="login-btn" disabled>Login</button>
+
       <p class="login-help">
-        Need help? Contact your administrator to get your client key.
+        Need help? Contact your administrator to get your client credentials.
       </p>
     </div>
   </div>
@@ -1699,8 +1710,14 @@
     // Authentication
     // ============================================
     let isAuthenticated = false;
+    let certFileContent = null;
     let keyFileContent = null;
     let currentUser = null;
+
+    function updateLoginButton() {
+      const btn = document.getElementById('login-btn');
+      btn.disabled = !(certFileContent && keyFileContent);
+    }
 
     // Check session on page load
     async function checkSession() {
@@ -1817,35 +1834,238 @@
       }
     }
 
+    // Convert SEC1 EC key to PKCS#8 format for Web Crypto API
+    function sec1ToPkcs8(sec1Bytes) {
+      // PKCS#8 structure:
+      // SEQUENCE {
+      //   INTEGER 0 (version)
+      //   SEQUENCE { OID ecPublicKey, OID prime256v1 } (AlgorithmIdentifier)
+      //   OCTET STRING { SEC1 key }
+      // }
+
+      const sec1Length = sec1Bytes.length;
+
+      // AlgorithmIdentifier for EC P-256 (21 bytes total)
+      const algoId = [
+        0x30, 0x13,  // SEQUENCE, length 19
+        0x06, 0x07, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x02, 0x01,  // OID 1.2.840.10045.2.1 (ecPublicKey)
+        0x06, 0x08, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x03, 0x01, 0x07  // OID 1.2.840.10045.3.1.7 (prime256v1)
+      ];
+
+      // Build the OCTET STRING for the SEC1 key
+      const octetString = [];
+      octetString.push(0x04);  // OCTET STRING tag
+      if (sec1Length > 127) {
+        octetString.push(0x81, sec1Length);
+      } else {
+        octetString.push(sec1Length);
+      }
+
+      // Version: INTEGER 0 (3 bytes: 02 01 00)
+      const version = [0x02, 0x01, 0x00];
+
+      // Total inner content length
+      const innerLength = version.length + algoId.length + octetString.length + sec1Length;
+
+      // Build outer SEQUENCE
+      const result = [];
+      result.push(0x30);  // SEQUENCE tag
+      if (innerLength > 127) {
+        result.push(0x81, innerLength);
+      } else {
+        result.push(innerLength);
+      }
+
+      // Append all parts
+      result.push(...version);
+      result.push(...algoId);
+      result.push(...octetString);
+
+      // Create final array with SEC1 bytes
+      const pkcs8 = new Uint8Array(result.length + sec1Bytes.length);
+      pkcs8.set(result);
+      pkcs8.set(sec1Bytes, result.length);
+
+      return pkcs8;
+    }
+
+    // Convert PEM private key to CryptoKey for Web Crypto API
+    async function importPrivateKey(pemKey) {
+      // Determine key type
+      const isEc = pemKey.includes('EC PRIVATE KEY');
+      const isRsa = pemKey.includes('RSA PRIVATE KEY');
+      const isPkcs8 = pemKey.includes('PRIVATE KEY') && !isEc && !isRsa;
+
+      // Remove PEM headers and decode base64
+      const pemBody = pemKey
+        .replace(/-----BEGIN (?:EC |RSA )?PRIVATE KEY-----/, '')
+        .replace(/-----END (?:EC |RSA )?PRIVATE KEY-----/, '')
+        .replace(/\s/g, '');
+
+      const binaryString = atob(pemBody);
+      let bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+
+      try {
+        if (isPkcs8) {
+          // PKCS#8 format - try EC first, then RSA
+          for (const algo of [
+            { name: 'ECDSA', namedCurve: 'P-256' },
+            { name: 'ECDSA', namedCurve: 'P-384' },
+            { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }
+          ]) {
+            try {
+              return await crypto.subtle.importKey('pkcs8', bytes, algo, false, ['sign']);
+            } catch {
+              continue;
+            }
+          }
+          throw new Error('Unsupported key type');
+        } else if (isEc) {
+          // SEC1 EC key - convert to PKCS#8 first
+          const pkcs8Bytes = sec1ToPkcs8(bytes);
+          return await crypto.subtle.importKey(
+            'pkcs8',
+            pkcs8Bytes,
+            { name: 'ECDSA', namedCurve: 'P-256' },
+            false,
+            ['sign']
+          );
+        } else if (isRsa) {
+          // RSA PKCS#1 format - not directly supported, would need conversion
+          throw new Error('RSA PKCS#1 format not supported. Please convert to PKCS#8.');
+        }
+        throw new Error('Unknown key format');
+      } catch (e) {
+        throw new Error('Failed to import private key: ' + e.message);
+      }
+    }
+
+    // Convert IEEE P1363 signature to DER format (required by Node.js)
+    function p1363ToDer(p1363Sig) {
+      const r = p1363Sig.slice(0, 32);
+      const s = p1363Sig.slice(32, 64);
+
+      // Remove leading zeros but keep one if needed
+      function trimZeros(bytes) {
+        let i = 0;
+        while (i < bytes.length - 1 && bytes[i] === 0) i++;
+        return bytes.slice(i);
+      }
+
+      // Add leading zero if high bit is set (to prevent negative interpretation)
+      function toSignedInt(bytes) {
+        const trimmed = trimZeros(bytes);
+        if (trimmed[0] & 0x80) {
+          const result = new Uint8Array(trimmed.length + 1);
+          result[0] = 0;
+          result.set(trimmed, 1);
+          return result;
+        }
+        return trimmed;
+      }
+
+      const rInt = toSignedInt(r);
+      const sInt = toSignedInt(s);
+
+      // Build DER: SEQUENCE { INTEGER r, INTEGER s }
+      const rDer = [0x02, rInt.length, ...rInt];
+      const sDer = [0x02, sInt.length, ...sInt];
+      const seqLen = rDer.length + sDer.length;
+      const der = new Uint8Array([0x30, seqLen, ...rDer, ...sDer]);
+
+      return der;
+    }
+
+    // Sign a challenge using the private key
+    async function signChallenge(challenge, cryptoKey) {
+      const encoder = new TextEncoder();
+      const data = encoder.encode(challenge);
+
+      // Determine algorithm based on key type
+      let algorithm;
+      const isEcdsa = cryptoKey.algorithm.name === 'ECDSA';
+      if (isEcdsa) {
+        algorithm = { name: 'ECDSA', hash: 'SHA-256' };
+      } else {
+        algorithm = { name: 'RSASSA-PKCS1-v1_5' };
+      }
+
+      const signature = await crypto.subtle.sign(algorithm, cryptoKey, data);
+      let sigBytes = new Uint8Array(signature);
+
+      // Convert ECDSA signature from P1363 to DER format for Node.js compatibility
+      if (isEcdsa) {
+        sigBytes = p1363ToDer(sigBytes);
+      }
+
+      // Convert to base64
+      let binary = '';
+      for (let i = 0; i < sigBytes.length; i++) {
+        binary += String.fromCharCode(sigBytes[i]);
+      }
+      return btoa(binary);
+    }
+
     // Login handler
     async function login() {
       hideLoginError();
 
-      if (!keyFileContent) {
-        showLoginError('Please upload a client key file');
+      if (!certFileContent || !keyFileContent) {
+        showLoginError('Please upload both certificate and key files');
         return;
       }
 
       try {
-        const res = await fetch('/api/auth/login', {
+        // Step 1: Request a challenge from the server
+        const challengeRes = await fetch('/api/auth/challenge', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ cert: certFileContent })
+        });
+
+        const challengeData = await challengeRes.json();
+
+        if (!challengeRes.ok || !challengeData.success) {
+          showLoginError(challengeData.error || 'Failed to get challenge');
+          return;
+        }
+
+        // Step 2: Import the private key and sign the challenge
+        let cryptoKey;
+        try {
+          cryptoKey = await importPrivateKey(keyFileContent);
+        } catch (e) {
+          showLoginError('Failed to process private key: ' + e.message);
+          return;
+        }
+
+        const signature = await signChallenge(challengeData.challenge, cryptoKey);
+
+        // Step 3: Complete login with signature
+        const loginRes = await fetch('/api/auth/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            key: keyFileContent
+            challengeId: challengeData.challengeId,
+            signature,
+            cert: certFileContent
           })
         });
 
-        const data = await res.json();
+        const loginData = await loginRes.json();
 
-        if (res.ok && data.success) {
+        if (loginRes.ok && loginData.success) {
           isAuthenticated = true;
-          currentUser = data.session;
+          currentUser = loginData.session;
           updateUserDisplay();
           showApp();
           // Initialize the app
           initApp();
         } else {
-          showLoginError(data.error || 'Login failed');
+          showLoginError(loginData.error || 'Login failed');
         }
       } catch (error) {
         showLoginError('Login failed: ' + error.message);
@@ -1861,14 +2081,19 @@
       }
 
       isAuthenticated = false;
+      certFileContent = null;
       keyFileContent = null;
       currentUser = null;
 
-      // Reset file upload area
+      // Reset file upload areas
+      document.getElementById('cert-upload-area').classList.remove('has-file');
+      document.getElementById('cert-file-name').style.display = 'none';
+      document.getElementById('cert-file-input').value = '';
       document.getElementById('key-upload-area').classList.remove('has-file');
       document.getElementById('key-file-name').style.display = 'none';
       document.getElementById('key-file-input').value = '';
       document.getElementById('logged-in-user').textContent = '';
+      document.getElementById('login-btn').disabled = true;
 
       showLogin();
     }
@@ -1881,11 +2106,19 @@
       }
     }
 
-    // Initialize file upload handlers - auto login on file selection
+    // Initialize file upload handlers
+    setupFileUpload('cert-upload-area', 'cert-file-input', 'cert-file-name', (content) => {
+      certFileContent = content;
+      updateLoginButton();
+    });
+
     setupFileUpload('key-upload-area', 'key-file-input', 'key-file-name', (content) => {
       keyFileContent = content;
-      login();
+      updateLoginButton();
     });
+
+    // Login button click handler
+    document.getElementById('login-btn').addEventListener('click', login);
 
     // ============================================
     // Chart.js global config

@@ -1,9 +1,13 @@
 import express, { type Request, type Response } from 'express';
 const { Router } = express;
-import { readdir, readFile, writeFile, unlink, mkdir } from 'fs/promises';
-import { join } from 'path';
-import { execSync } from 'child_process';
-import { X509Certificate, createPrivateKey, generateKeyPairSync } from 'crypto';
+import { execSync } from 'node:child_process';
+import {
+  X509Certificate,
+  createPrivateKey,
+  generateKeyPairSync,
+} from 'node:crypto';
+import { mkdir, readFile, readdir, unlink, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 
 interface CertificateInfo {
   subject: Record<string, string>;
@@ -27,7 +31,9 @@ export function createCertificateRouter(certsDir: string) {
   const router = Router();
 
   // Helper to read certificate details using Node's built-in X509Certificate
-  async function getCertificateInfo(certPath: string): Promise<CertificateInfo> {
+  async function getCertificateInfo(
+    certPath: string,
+  ): Promise<CertificateInfo> {
     try {
       const certPem = await readFile(certPath, 'utf8');
       const cert = new X509Certificate(certPem);
@@ -53,7 +59,7 @@ export function createCertificateRouter(certsDir: string) {
         validTo: cert.validTo,
         isExpired: new Date() > new Date(cert.validTo),
         fingerprint: cert.fingerprint256.replace(/:/g, ':'),
-        keyType: cert.publicKey.asymmetricKeyType
+        keyType: cert.publicKey.asymmetricKeyType,
       };
     } catch (error: any) {
       throw new Error(`Failed to read certificate: ${error.message}`);
@@ -64,7 +70,9 @@ export function createCertificateRouter(certsDir: string) {
   router.get('/', async (req, res) => {
     try {
       const files = await readdir(certsDir);
-      const certFiles = files.filter(f => f.endsWith('.crt') && f !== 'ca.crt');
+      const certFiles = files.filter(
+        (f) => f.endsWith('.crt') && f !== 'ca.crt',
+      );
 
       const certificates = await Promise.all(
         certFiles.map(async (file) => {
@@ -84,16 +92,16 @@ export function createCertificateRouter(certsDir: string) {
               name,
               filename: file,
               hasPrivateKey,
-              ...info
+              ...info,
             };
           } catch (error: any) {
             return {
               name,
               filename: file,
-              error: error.message
+              error: error.message,
             } as CertificateFile;
           }
-        })
+        }),
       );
 
       res.json({ certificates });
@@ -121,7 +129,9 @@ export function createCertificateRouter(certsDir: string) {
       const info = await getCertificateInfo(certPath);
       res.json({ certificate: { name, ...info } });
     } catch (error: any) {
-      res.status(404).json({ error: `Certificate not found: ${error.message}` });
+      res
+        .status(404)
+        .json({ error: `Certificate not found: ${error.message}` });
     }
   });
 
@@ -133,7 +143,9 @@ export function createCertificateRouter(certsDir: string) {
       const organization = req.body.organization?.trim() || 'Natsable';
 
       if (!username || !email) {
-        return res.status(400).json({ error: 'Username and email are required' });
+        return res
+          .status(400)
+          .json({ error: 'Username and email are required' });
       }
 
       // Sanitize username for filename
@@ -147,7 +159,9 @@ export function createCertificateRouter(certsDir: string) {
       // Check if certificate already exists
       try {
         await readFile(certPath);
-        return res.status(409).json({ error: 'Certificate already exists for this user' });
+        return res
+          .status(409)
+          .json({ error: 'Certificate already exists for this user' });
       } catch {}
 
       // Create CSR config
@@ -175,13 +189,22 @@ subjectAltName = email:${email}
 
       try {
         // Generate EC key
-        execSync(`openssl ecparam -name prime256v1 -genkey -noout -out "${keyPath}"`, { cwd: certsDir });
+        execSync(
+          `openssl ecparam -name prime256v1 -genkey -noout -out "${keyPath}"`,
+          { cwd: certsDir },
+        );
 
         // Generate CSR
-        execSync(`openssl req -new -sha256 -key "${keyPath}" -out "${csrPath}" -config "${cnfPath}"`, { cwd: certsDir });
+        execSync(
+          `openssl req -new -sha256 -key "${keyPath}" -out "${csrPath}" -config "${cnfPath}"`,
+          { cwd: certsDir },
+        );
 
         // Sign with CA
-        execSync(`openssl x509 -req -sha256 -days ${days} -in "${csrPath}" -CA ca.crt -CAkey ca.key -CAcreateserial -out "${certPath}" -extfile "${extPath}"`, { cwd: certsDir });
+        execSync(
+          `openssl x509 -req -sha256 -days ${days} -in "${csrPath}" -CA ca.crt -CAkey ca.key -CAcreateserial -out "${certPath}" -extfile "${extPath}"`,
+          { cwd: certsDir },
+        );
 
         // Set key file permissions
         execSync(`chmod 600 "${keyPath}"`, { cwd: certsDir });
@@ -197,8 +220,8 @@ subjectAltName = email:${email}
           message: 'Certificate created successfully',
           certificate: {
             name: `${safeName}-client`,
-            ...info
-          }
+            ...info,
+          },
         });
       } catch (execError: any) {
         // Clean up on error
@@ -220,7 +243,9 @@ subjectAltName = email:${email}
 
       // Don't allow deleting CA or server certs
       if (name === 'ca' || name === 'server') {
-        return res.status(403).json({ error: 'Cannot delete CA or server certificate' });
+        return res
+          .status(403)
+          .json({ error: 'Cannot delete CA or server certificate' });
       }
 
       const certPath = join(certsDir, `${name}.crt`);
@@ -240,7 +265,7 @@ subjectAltName = email:${email}
     }
   });
 
-  // Download certificate bundle (cert + key)
+  // Download certificate bundle (cert + key in PKCS#8 format)
   router.get('/:name/download', async (req, res) => {
     try {
       const { name } = req.params;
@@ -251,15 +276,26 @@ subjectAltName = email:${email}
       let bundle = cert;
 
       try {
-        const key = await readFile(keyPath, 'utf8');
-        bundle = `${cert}\n${key}`;
+        const keyPem = await readFile(keyPath, 'utf8');
+        // Convert the private key to PKCS#8 format for Web Crypto API compatibility
+        const privateKey = createPrivateKey(keyPem);
+        const pkcs8Key = privateKey.export({
+          type: 'pkcs8',
+          format: 'pem',
+        }) as string;
+        bundle = `${cert}\n${pkcs8Key}`;
       } catch {}
 
       res.setHeader('Content-Type', 'application/x-pem-file');
-      res.setHeader('Content-Disposition', `attachment; filename="${name}.pem"`);
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="${name}.pem"`,
+      );
       res.send(bundle);
     } catch (error: any) {
-      res.status(404).json({ error: `Certificate not found: ${error.message}` });
+      res
+        .status(404)
+        .json({ error: `Certificate not found: ${error.message}` });
     }
   });
 

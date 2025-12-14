@@ -1,8 +1,15 @@
 import express, { type Request, type Response } from 'express';
 const { Router } = express;
-import nats, { type NatsConnection, type JetStreamClient, type ConnectionOptions, type KvEntry, type KvStatus, type StorageType } from 'nats';
+import nats, {
+  type NatsConnection,
+  type JetStreamClient,
+  type ConnectionOptions,
+  type KvEntry,
+  type KvStatus,
+  type StorageType,
+} from 'nats';
 const { connect, StringCodec } = nats;
-import { join } from 'path';
+import { join } from 'node:path';
 
 const sc = StringCodec();
 
@@ -45,7 +52,9 @@ export function createKvRouter(natsUrl: string, certsDir: string) {
   async function getNatsConnection() {
     if (!nc || nc.isClosed()) {
       // Ensure TLS prefix for secure connections
-      const serverUrl = natsUrl.startsWith('tls://') ? natsUrl : `tls://${natsUrl}`;
+      const serverUrl = natsUrl.startsWith('tls://')
+        ? natsUrl
+        : `tls://${natsUrl}`;
       const tlsOptions: ConnectionOptions = {
         servers: serverUrl,
         tls: {
@@ -53,7 +62,7 @@ export function createKvRouter(natsUrl: string, certsDir: string) {
           // Server uses Let's Encrypt (verified by system CA)
           certFile: join(certsDir, 'admin-client.crt'),
           keyFile: join(certsDir, 'admin-client.key'),
-        }
+        },
       };
       nc = await connect(tlsOptions);
       js = nc.jetstream();
@@ -83,7 +92,7 @@ export function createKvRouter(natsUrl: string, certsDir: string) {
             maxAge: stream.config.max_age,
             storage: stream.config.storage,
             replicas: stream.config.num_replicas,
-            state: stream.state
+            state: stream.state,
           });
         }
       }
@@ -91,14 +100,17 @@ export function createKvRouter(natsUrl: string, certsDir: string) {
       res.json({ buckets: kvBuckets });
     } catch (error: any) {
       console.error('Error listing KV buckets:', error);
-      res.status(500).json({ error: 'Failed to list KV buckets', message: error.message });
+      res
+        .status(500)
+        .json({ error: 'Failed to list KV buckets', message: error.message });
     }
   });
 
   // Create a new KV bucket
   router.post('/buckets', async (req, res) => {
     try {
-      const { name, description, maxBytes, maxAge, replicas, history } = req.body;
+      const { name, description, maxBytes, maxAge, replicas, history } =
+        req.body;
 
       if (!name) {
         return res.status(400).json({ error: 'Bucket name is required' });
@@ -106,7 +118,10 @@ export function createKvRouter(natsUrl: string, certsDir: string) {
 
       // Validate bucket name (alphanumeric, underscore, dash)
       if (!/^[a-zA-Z0-9_-]+$/.test(name)) {
-        return res.status(400).json({ error: 'Bucket name can only contain alphanumeric characters, underscores, and dashes' });
+        return res.status(400).json({
+          error:
+            'Bucket name can only contain alphanumeric characters, underscores, and dashes',
+        });
       }
 
       const { js } = await getNatsConnection();
@@ -114,11 +129,11 @@ export function createKvRouter(natsUrl: string, certsDir: string) {
       const opts: any = {
         description: description || '',
         history: history || 1,
-        replicas: replicas || 1
+        replicas: replicas || 1,
       };
 
-      if (maxBytes) opts.max_bucket_size = parseInt(maxBytes);
-      if (maxAge) opts.ttl = parseInt(maxAge);
+      if (maxBytes) opts.max_bucket_size = Number.parseInt(maxBytes);
+      if (maxAge) opts.ttl = Number.parseInt(maxAge);
 
       // Note: js.views.kv normally expects name without KV_ prefix if using standard KV
       await js.views.kv(name, opts);
@@ -126,11 +141,13 @@ export function createKvRouter(natsUrl: string, certsDir: string) {
       res.json({
         success: true,
         bucket: name,
-        message: `Bucket "${name}" created successfully`
+        message: `Bucket "${name}" created successfully`,
       });
     } catch (error: any) {
       console.error('Error creating KV bucket:', error);
-      res.status(500).json({ error: 'Failed to create KV bucket', message: error.message });
+      res
+        .status(500)
+        .json({ error: 'Failed to create KV bucket', message: error.message });
     }
   });
 
@@ -143,10 +160,15 @@ export function createKvRouter(natsUrl: string, certsDir: string) {
 
       await jsm.streams.delete(`KV_${name}`);
 
-      res.json({ success: true, message: `Bucket "${name}" deleted successfully` });
+      res.json({
+        success: true,
+        message: `Bucket "${name}" deleted successfully`,
+      });
     } catch (error: any) {
       console.error('Error deleting KV bucket:', error);
-      res.status(500).json({ error: 'Failed to delete KV bucket', message: error.message });
+      res
+        .status(500)
+        .json({ error: 'Failed to delete KV bucket', message: error.message });
     }
   });
 
@@ -169,11 +191,13 @@ export function createKvRouter(natsUrl: string, certsDir: string) {
         replicas: status.replicas,
         bytes: status.streamInfo.state.bytes,
         storage: status.backingStore,
-        streamInfo: status.streamInfo
+        streamInfo: status.streamInfo,
       });
     } catch (error: any) {
       console.error('Error getting bucket info:', error);
-      res.status(500).json({ error: 'Failed to get bucket info', message: error.message });
+      res
+        .status(500)
+        .json({ error: 'Failed to get bucket info', message: error.message });
     }
   });
 
@@ -197,13 +221,15 @@ export function createKvRouter(natsUrl: string, certsDir: string) {
           keys.push(key);
         }
 
-        if (keys.length >= parseInt(limit as string)) break;
+        if (keys.length >= Number.parseInt(limit as string)) break;
       }
 
       res.json({ keys, bucket: name });
     } catch (error: any) {
       console.error('Error listing keys:', error);
-      res.status(500).json({ error: 'Failed to list keys', message: error.message });
+      res
+        .status(500)
+        .json({ error: 'Failed to list keys', message: error.message });
     }
   });
 
@@ -240,12 +266,14 @@ export function createKvRouter(natsUrl: string, certsDir: string) {
         revision: entry.revision,
         created: entry.created,
         operation: entry.operation,
-        bucket: name
+        bucket: name,
       };
       res.json(response);
     } catch (error: any) {
       console.error('Error getting key:', error);
-      res.status(500).json({ error: 'Failed to get key', message: error.message });
+      res
+        .status(500)
+        .json({ error: 'Failed to get key', message: error.message });
     }
   });
 
@@ -269,7 +297,9 @@ export function createKvRouter(natsUrl: string, certsDir: string) {
             // Not JSON, keep as string
           }
         } catch {
-          value = entry.value ? Buffer.from(entry.value).toString('base64') : null;
+          value = entry.value
+            ? Buffer.from(entry.value).toString('base64')
+            : null;
         }
 
         history.push({
@@ -277,14 +307,16 @@ export function createKvRouter(natsUrl: string, certsDir: string) {
           value,
           revision: entry.revision,
           created: entry.created,
-          operation: entry.operation
+          operation: entry.operation,
         });
       }
 
       res.json({ history, key, bucket: name });
     } catch (error: any) {
       console.error('Error getting key history:', error);
-      res.status(500).json({ error: 'Failed to get key history', message: error.message });
+      res
+        .status(500)
+        .json({ error: 'Failed to get key history', message: error.message });
     }
   });
 
@@ -302,7 +334,8 @@ export function createKvRouter(natsUrl: string, certsDir: string) {
       const kv = await js.views.kv(name);
 
       // Convert value to string if it's an object
-      const stringValue = typeof value === 'object' ? JSON.stringify(value) : String(value);
+      const stringValue =
+        typeof value === 'object' ? JSON.stringify(value) : String(value);
 
       const revision = await kv.put(key, sc.encode(stringValue));
 
@@ -310,11 +343,13 @@ export function createKvRouter(natsUrl: string, certsDir: string) {
         success: true,
         key,
         revision,
-        message: `Key "${key}" saved successfully`
+        message: `Key "${key}" saved successfully`,
       });
     } catch (error: any) {
       console.error('Error saving key:', error);
-      res.status(500).json({ error: 'Failed to save key', message: error.message });
+      res
+        .status(500)
+        .json({ error: 'Failed to save key', message: error.message });
     }
   });
 
@@ -338,7 +373,8 @@ export function createKvRouter(natsUrl: string, certsDir: string) {
       }
 
       // Convert value to string if it's an object
-      const stringValue = typeof value === 'object' ? JSON.stringify(value) : String(value);
+      const stringValue =
+        typeof value === 'object' ? JSON.stringify(value) : String(value);
 
       const revision = await kv.create(key, sc.encode(stringValue));
 
@@ -346,14 +382,18 @@ export function createKvRouter(natsUrl: string, certsDir: string) {
         success: true,
         key,
         revision,
-        message: `Key "${key}" created successfully`
+        message: `Key "${key}" created successfully`,
       });
     } catch (error: any) {
       console.error('Error creating key:', error);
       if (error.message.includes('wrong last sequence')) {
-        res.status(409).json({ error: 'Key already exists', message: error.message });
+        res
+          .status(409)
+          .json({ error: 'Key already exists', message: error.message });
       } else {
-        res.status(500).json({ error: 'Failed to create key', message: error.message });
+        res
+          .status(500)
+          .json({ error: 'Failed to create key', message: error.message });
       }
     }
   });
@@ -375,13 +415,16 @@ export function createKvRouter(natsUrl: string, certsDir: string) {
 
       res.json({
         success: true,
-        message: purge === 'true'
-          ? `Key "${key}" purged successfully (all history removed)`
-          : `Key "${key}" deleted successfully`
+        message:
+          purge === 'true'
+            ? `Key "${key}" purged successfully (all history removed)`
+            : `Key "${key}" deleted successfully`,
       });
     } catch (error: any) {
       console.error('Error deleting key:', error);
-      res.status(500).json({ error: 'Failed to delete key', message: error.message });
+      res
+        .status(500)
+        .json({ error: 'Failed to delete key', message: error.message });
     }
   });
 
@@ -396,7 +439,9 @@ export function createKvRouter(natsUrl: string, certsDir: string) {
       }
 
       if (newKey === key) {
-        return res.status(400).json({ error: 'New key name must be different from current key' });
+        return res
+          .status(400)
+          .json({ error: 'New key name must be different from current key' });
       }
 
       const { js } = await getNatsConnection();
@@ -425,11 +470,13 @@ export function createKvRouter(natsUrl: string, certsDir: string) {
         oldKey: key,
         newKey,
         revision,
-        message: `Key renamed from "${key}" to "${newKey}"`
+        message: `Key renamed from "${key}" to "${newKey}"`,
       });
     } catch (error: any) {
       console.error('Error renaming key:', error);
-      res.status(500).json({ error: 'Failed to rename key', message: error.message });
+      res
+        .status(500)
+        .json({ error: 'Failed to rename key', message: error.message });
     }
   });
 
@@ -463,7 +510,9 @@ export function createKvRouter(natsUrl: string, certsDir: string) {
             // Not JSON
           }
         } catch {
-          value = entry.value ? Buffer.from(entry.value).toString('base64') : null;
+          value = entry.value
+            ? Buffer.from(entry.value).toString('base64')
+            : null;
         }
 
         const event = {
@@ -471,14 +520,16 @@ export function createKvRouter(natsUrl: string, certsDir: string) {
           value,
           revision: entry.revision,
           operation: entry.operation,
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
         };
 
         res.write(`data: ${JSON.stringify(event)}\n\n`);
       }
     } catch (error: any) {
       console.error('Error watching bucket:', error);
-      res.status(500).json({ error: 'Failed to watch bucket', message: error.message });
+      res
+        .status(500)
+        .json({ error: 'Failed to watch bucket', message: error.message });
     }
   });
 

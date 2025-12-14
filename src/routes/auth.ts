@@ -1,13 +1,21 @@
 import express, { type Request, type Response } from 'express';
 const { Router } = express;
-import { createSession, getSession, deleteSession, verifyClientKey } from '../middleware/auth.ts';
+import {
+  createChallenge,
+  createSession,
+  deleteSession,
+  getSession,
+  verifySignature,
+} from '../middleware/auth.ts';
 
 // Parse cookies from request header
-function parseCookies(cookieHeader: string | undefined): Record<string, string> {
+function parseCookies(
+  cookieHeader: string | undefined,
+): Record<string, string> {
   const cookies: Record<string, string> = {};
   if (!cookieHeader) return cookies;
 
-  cookieHeader.split(';').forEach(cookie => {
+  cookieHeader.split(';').forEach((cookie) => {
     const [name, ...rest] = cookie.trim().split('=');
     cookies[name] = rest.join('=');
   });
@@ -18,29 +26,65 @@ function parseCookies(cookieHeader: string | undefined): Record<string, string> 
 export function createAuthRouter(certsDir: string) {
   const router = Router();
 
-  // Login with client key/cert bundle (.pem file)
-  router.post('/login', async (req, res) => {
+  // Request a challenge for authentication
+  router.post('/challenge', async (req, res) => {
     try {
-      const { key } = req.body;
+      const { cert } = req.body;
 
-      if (!key) {
-        return res.status(400).json({ error: 'Client credentials file is required' });
+      if (!cert) {
+        return res.status(400).json({ error: 'Certificate is required' });
       }
 
-      // Verify the key/cert bundle
-      const result = await verifyClientKey(key, certsDir);
+      const result = await createChallenge(cert, certsDir);
 
       if (!result.valid) {
-        return res.status(401).json({ error: result.error || 'Invalid credentials' });
+        return res
+          .status(401)
+          .json({ error: result.error || 'Invalid certificate' });
+      }
+
+      res.json({
+        success: true,
+        challengeId: result.challengeId,
+        challenge: result.challenge,
+      });
+    } catch (error: any) {
+      console.error('Challenge error:', error);
+      res.status(500).json({ error: `Challenge failed: ${error.message}` });
+    }
+  });
+
+  // Complete login with signed challenge
+  router.post('/login', async (req, res) => {
+    try {
+      const { challengeId, signature, cert } = req.body;
+
+      if (!challengeId || !signature || !cert) {
+        return res.status(400).json({
+          error: 'Challenge ID, signature, and certificate are required',
+        });
+      }
+
+      // Verify the signature
+      const result = await verifySignature(
+        challengeId,
+        signature,
+        cert,
+        certsDir,
+      );
+
+      if (!result.valid) {
+        return res
+          .status(401)
+          .json({ error: result.error || 'Invalid credentials' });
       }
 
       // Create session with username if available
-      // @ts-ignore - fingerprint is present if valid is true
-      const sessionId = createSession(result.fingerprint, result.username);
+      const sessionId = createSession(result.fingerprint!, result.username);
 
       // Set cookie (httpOnly for security, 24 hour expiry)
       res.setHeader('Set-Cookie', [
-        `nats-eyes-session=${sessionId}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${24 * 60 * 60}`
+        `natsable-session=${sessionId}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${24 * 60 * 60}`,
       ]);
 
       res.json({
@@ -49,20 +93,19 @@ export function createAuthRouter(certsDir: string) {
         session: {
           fingerprint: result.fingerprint,
           username: result.username || null,
-          keyOnly: result.keyOnly || false,
-          validTo: result.validTo || null
-        }
+          validTo: result.validTo || null,
+        },
       });
     } catch (error: any) {
       console.error('Login error:', error);
-      res.status(500).json({ error: 'Login failed: ' + error.message });
+      res.status(500).json({ error: `Login failed: ${error.message}` });
     }
   });
 
   // Logout
   router.post('/logout', (req, res) => {
     const cookies = parseCookies(req.headers.cookie);
-    const sessionId = cookies['nats-eyes-session'];
+    const sessionId = cookies['natsable-session'];
 
     if (sessionId) {
       deleteSession(sessionId);
@@ -70,7 +113,7 @@ export function createAuthRouter(certsDir: string) {
 
     // Clear cookie
     res.setHeader('Set-Cookie', [
-      'nats-eyes-session=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0'
+      'natsable-session=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0',
     ]);
 
     res.json({ success: true, message: 'Logged out' });
@@ -79,7 +122,7 @@ export function createAuthRouter(certsDir: string) {
   // Check session status
   router.get('/session', (req, res) => {
     const cookies = parseCookies(req.headers.cookie);
-    const sessionId = cookies['nats-eyes-session'];
+    const sessionId = cookies['natsable-session'];
 
     if (!sessionId) {
       return res.json({ authenticated: false });
@@ -95,8 +138,8 @@ export function createAuthRouter(certsDir: string) {
       session: {
         fingerprint: session.keyFingerprint,
         username: session.username || null,
-        expiresAt: new Date(session.expiresAt).toISOString()
-      }
+        expiresAt: new Date(session.expiresAt).toISOString(),
+      },
     });
   });
 
