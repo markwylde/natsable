@@ -1,13 +1,20 @@
-import { randomBytes, createHash } from 'crypto';
-import { X509Certificate, createPrivateKey, createPublicKey, KeyObject } from 'crypto';
-import { readFile, readdir } from 'fs/promises';
-import { join } from 'path';
-import { type Request, type Response, type NextFunction } from 'express';
+import { createHash, createVerify, randomBytes } from 'node:crypto';
+import { X509Certificate } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import type { NextFunction, Request, Response } from 'express';
 
 interface Session {
   id: string;
   keyFingerprint: string;
   username: string | null;
+  createdAt: number;
+  expiresAt: number;
+}
+
+interface Challenge {
+  challenge: string;
+  certFingerprint: string;
   createdAt: number;
   expiresAt: number;
 }
@@ -19,15 +26,23 @@ interface AuthRequest extends Request {
 // In-memory session store (for production, use Redis or similar)
 const sessions = new Map<string, Session>();
 
+// In-memory challenge store (short-lived, 60 seconds)
+const challenges = new Map<string, Challenge>();
+
 // Session expiry time (24 hours)
 const SESSION_EXPIRY = 24 * 60 * 60 * 1000;
 
+// Challenge expiry time (60 seconds)
+const CHALLENGE_EXPIRY = 60 * 1000;
+
 // Parse cookies from request header
-function parseCookies(cookieHeader: string | undefined): Record<string, string> {
+function parseCookies(
+  cookieHeader: string | undefined,
+): Record<string, string> {
   const cookies: Record<string, string> = {};
   if (!cookieHeader) return cookies;
 
-  cookieHeader.split(';').forEach(cookie => {
+  cookieHeader.split(';').forEach((cookie) => {
     const [name, ...rest] = cookie.trim().split('=');
     cookies[name] = rest.join('=');
   });
@@ -41,14 +56,17 @@ function generateSessionId(): string {
 }
 
 // Create a new session
-export function createSession(keyFingerprint: string, username: string | null = null): string {
+export function createSession(
+  keyFingerprint: string,
+  username: string | null = null,
+): string {
   const sessionId = generateSessionId();
   const session: Session = {
     id: sessionId,
     keyFingerprint,
     username,
     createdAt: Date.now(),
-    expiresAt: Date.now() + SESSION_EXPIRY
+    expiresAt: Date.now() + SESSION_EXPIRY,
   };
 
   sessions.set(sessionId, session);
@@ -74,23 +92,12 @@ export function deleteSession(sessionId: string): void {
   sessions.delete(sessionId);
 }
 
-// Parse a PEM file that may contain both certificate and key
-function parsePemBundle(pemContent: string): { key: string | null; cert: string | null } {
-  const result: { key: string | null; cert: string | null } = { key: null, cert: null };
-
-  // Extract private key
-  const keyMatch = pemContent.match(/-----BEGIN (?:EC |RSA )?PRIVATE KEY-----[\s\S]*?-----END (?:EC |RSA )?PRIVATE KEY-----/);
-  if (keyMatch) {
-    result.key = keyMatch[0];
-  }
-
-  // Extract certificate
-  const certMatch = pemContent.match(/-----BEGIN CERTIFICATE-----[\s\S]*?-----END CERTIFICATE-----/);
-  if (certMatch) {
-    result.cert = certMatch[0];
-  }
-
-  return result;
+// Parse a PEM file to extract certificate
+function parseCertFromPem(pemContent: string): string | null {
+  const certMatch = pemContent.match(
+    /-----BEGIN CERTIFICATE-----[\s\S]*?-----END CERTIFICATE-----/,
+  );
+  return certMatch ? certMatch[0] : null;
 }
 
 // Extract username from certificate subject
@@ -118,128 +125,142 @@ function extractUsername(cert: X509Certificate): string | null {
   return null;
 }
 
-// Find matching certificate for a private key by checking all certs in certs directory
-async function findMatchingCertificate(privateKey: KeyObject, certsDir: string): Promise<X509Certificate | null> {
-  try {
-    const files = await readdir(certsDir);
-    const certFiles = files.filter(f => f.endsWith('.crt') && f !== 'ca.crt' && f !== 'server.crt');
-
-    // Get public key from the private key
-    const publicKey = createPublicKey(privateKey);
-    const publicKeyPem = publicKey.export({ type: 'spki', format: 'pem' });
-
-    for (const file of certFiles) {
-      try {
-        const certPem = await readFile(join(certsDir, file), 'utf8');
-        const cert = new X509Certificate(certPem);
-
-        // Get public key from cert and compare
-        const certPublicKeyPem = cert.publicKey.export({ type: 'spki', format: 'pem' });
-
-        if (publicKeyPem === certPublicKeyPem) {
-          return cert;
-        }
-      } catch (e) {
-        // Skip invalid certs
-        continue;
-      }
-    }
-  } catch (e) {
-    // Ignore errors
-  }
-  return null;
+interface ChallengeResult {
+  valid: boolean;
+  error?: string;
+  challengeId?: string;
+  challenge?: string;
+  fingerprint?: string;
+  username?: string | null;
+  validTo?: string;
 }
 
-interface VerificationResult {
+interface VerifySignatureResult {
   valid: boolean;
   error?: string;
   fingerprint?: string;
   username?: string | null;
-  subject?: string;
   validTo?: string;
-  keyOnly?: boolean;
 }
 
-// Verify a client key/cert bundle
-export async function verifyClientKey(pemContent: string, certsDir: string): Promise<VerificationResult> {
+// Create a challenge for a certificate
+export async function createChallenge(
+  certPem: string,
+  certsDir: string,
+): Promise<ChallengeResult> {
   try {
-    const { key: keyPem, cert: certPem } = parsePemBundle(pemContent);
-
-    if (!keyPem) {
-      return { valid: false, error: 'No private key found in file' };
+    const certContent = parseCertFromPem(certPem);
+    if (!certContent) {
+      return { valid: false, error: 'No certificate found in file' };
     }
 
-    // Parse the private key to verify it's valid
-    const privateKey = createPrivateKey(keyPem);
+    const cert = new X509Certificate(certContent);
 
-    // If a certificate is included in the bundle, verify it
-    if (certPem) {
-      const cert = new X509Certificate(certPem);
+    // Read CA certificate to verify the client cert was signed by it
+    const caCertPem = await readFile(join(certsDir, 'ca.crt'), 'utf8');
+    const caCert = new X509Certificate(caCertPem);
 
-      // Read CA certificate to verify the client cert was signed by it
-      const caCertPem = await readFile(join(certsDir, 'ca.crt'), 'utf8');
-      const caCert = new X509Certificate(caCertPem);
-
-      // Verify the certificate was signed by the CA
-      if (!cert.verify(caCert.publicKey)) {
-        return { valid: false, error: 'Certificate not signed by CA' };
-      }
-
-      // Check if certificate is expired
-      if (new Date() > new Date(cert.validTo)) {
-        return { valid: false, error: 'Certificate has expired' };
-      }
-
-      // Get fingerprint and username
-      const fingerprint = cert.fingerprint256;
-      const username = extractUsername(cert);
-
-      return {
-        valid: true,
-        fingerprint,
-        username,
-        subject: cert.subject,
-        validTo: cert.validTo
-      };
+    // Verify the certificate was signed by the CA
+    if (!cert.verify(caCert.publicKey)) {
+      return { valid: false, error: 'Certificate not signed by CA' };
     }
 
-    // If only key provided, try to find matching certificate on server
-    const matchingCert = await findMatchingCertificate(privateKey, certsDir);
-
-    if (matchingCert) {
-      // Read CA certificate to verify the matched cert was signed by it
-      const caCertPem = await readFile(join(certsDir, 'ca.crt'), 'utf8');
-      const caCert = new X509Certificate(caCertPem);
-
-      // Verify the certificate was signed by the CA
-      if (!matchingCert.verify(caCert.publicKey)) {
-        return { valid: false, error: 'Certificate not signed by CA' };
-      }
-
-      // Check if certificate is expired
-      if (new Date() > new Date(matchingCert.validTo)) {
-        return { valid: false, error: 'Certificate has expired' };
-      }
-
-      const fingerprint = matchingCert.fingerprint256;
-      const username = extractUsername(matchingCert);
-
-      return {
-        valid: true,
-        fingerprint,
-        username,
-        subject: matchingCert.subject,
-        validTo: matchingCert.validTo
-      };
+    // Check if certificate is expired
+    if (new Date() > new Date(cert.validTo)) {
+      return { valid: false, error: 'Certificate has expired' };
     }
 
-    // No matching cert found - use key hash as fingerprint
-    const keyHash = createHash('sha256').update(keyPem).digest('hex');
+    // Generate a random challenge
+    const challengeId = randomBytes(16).toString('hex');
+    const challenge = randomBytes(32).toString('base64');
+    const fingerprint = cert.fingerprint256;
+
+    // Store the challenge
+    challenges.set(challengeId, {
+      challenge,
+      certFingerprint: fingerprint,
+      createdAt: Date.now(),
+      expiresAt: Date.now() + CHALLENGE_EXPIRY,
+    });
+
+    const username = extractUsername(cert);
 
     return {
       valid: true,
-      fingerprint: keyHash,
-      keyOnly: true
+      challengeId,
+      challenge,
+      fingerprint,
+      username,
+      validTo: cert.validTo,
+    };
+  } catch (error: any) {
+    return { valid: false, error: error.message };
+  }
+}
+
+// Verify a signed challenge
+export async function verifySignature(
+  challengeId: string,
+  signature: string,
+  certPem: string,
+  certsDir: string,
+): Promise<VerifySignatureResult> {
+  try {
+    // Get the challenge
+    const storedChallenge = challenges.get(challengeId);
+    if (!storedChallenge) {
+      return { valid: false, error: 'Challenge not found or expired' };
+    }
+
+    // Check if challenge is expired
+    if (Date.now() > storedChallenge.expiresAt) {
+      challenges.delete(challengeId);
+      return { valid: false, error: 'Challenge expired' };
+    }
+
+    // Parse the certificate
+    const certContent = parseCertFromPem(certPem);
+    if (!certContent) {
+      return { valid: false, error: 'No certificate found' };
+    }
+
+    const cert = new X509Certificate(certContent);
+
+    // Verify the certificate fingerprint matches
+    if (cert.fingerprint256 !== storedChallenge.certFingerprint) {
+      return { valid: false, error: 'Certificate mismatch' };
+    }
+
+    // Re-verify the certificate is signed by CA (defense in depth)
+    const caCertPem = await readFile(join(certsDir, 'ca.crt'), 'utf8');
+    const caCert = new X509Certificate(caCertPem);
+    if (!cert.verify(caCert.publicKey)) {
+      return { valid: false, error: 'Certificate not signed by CA' };
+    }
+
+    // Verify the signature using the certificate's public key
+    const verify = createVerify('SHA256');
+    verify.update(storedChallenge.challenge);
+    verify.end();
+
+    const signatureBuffer = Buffer.from(signature, 'base64');
+    const isValid = verify.verify(cert.publicKey, signatureBuffer);
+
+    if (!isValid) {
+      return { valid: false, error: 'Invalid signature' };
+    }
+
+    // Delete the used challenge
+    challenges.delete(challengeId);
+
+    const fingerprint = cert.fingerprint256;
+    const username = extractUsername(cert);
+
+    return {
+      valid: true,
+      fingerprint,
+      username,
+      validTo: cert.validTo,
     };
   } catch (error: any) {
     return { valid: false, error: error.message };
@@ -247,12 +268,19 @@ export async function verifyClientKey(pemContent: string, certsDir: string): Pro
 }
 
 // Auth middleware - protects routes
-export function authMiddleware(req: AuthRequest, res: Response, next: NextFunction) {
-  // Skip auth for login/logout endpoints
-  if (req.path === '/api/auth/login' ||
-      req.path === '/api/auth/logout' ||
-      req.path === '/api/auth/session' ||
-      req.path === '/api/health') {
+export function authMiddleware(
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+) {
+  // Skip auth for login/logout/challenge endpoints
+  if (
+    req.path === '/api/auth/login' ||
+    req.path === '/api/auth/logout' ||
+    req.path === '/api/auth/session' ||
+    req.path === '/api/auth/challenge' ||
+    req.path === '/api/health'
+  ) {
     return next();
   }
 
@@ -262,7 +290,7 @@ export function authMiddleware(req: AuthRequest, res: Response, next: NextFuncti
   }
 
   const cookies = parseCookies(req.headers.cookie);
-  const sessionId = cookies['nats-eyes-session'];
+  const sessionId = cookies['natsable-session'];
 
   if (!sessionId) {
     return res.status(401).json({ error: 'Not authenticated' });
@@ -278,12 +306,17 @@ export function authMiddleware(req: AuthRequest, res: Response, next: NextFuncti
   next();
 }
 
-// Clean up expired sessions periodically
+// Clean up expired sessions and challenges periodically
 setInterval(() => {
   const now = Date.now();
   for (const [id, session] of sessions) {
     if (now > session.expiresAt) {
       sessions.delete(id);
+    }
+  }
+  for (const [id, challenge] of challenges) {
+    if (now > challenge.expiresAt) {
+      challenges.delete(id);
     }
   }
 }, 60 * 1000); // Clean up every minute
