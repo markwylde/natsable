@@ -12,14 +12,16 @@
     "docker:up": "docker compose up -d nats",
     "docker:down": "docker compose down",
     "docker:logs": "docker compose logs -f nats",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "lint": "biome lint .",
+    "lint:fix": "biome lint --write .",
+    "check": "biome check .",
+    "check:fix": "biome check --write .",
+    "format": "biome format .",
+    "format:fix": "biome format --write .",
+    "tidy": "biome check --write ."
   },
-  "keywords": [
-    "nats",
-    "gui",
-    "certificate-management",
-    "user-management"
-  ],
+  "keywords": ["nats", "gui", "certificate-management", "user-management"],
   "author": "",
   "license": "MIT",
   "repository": {
@@ -27,9 +29,7 @@
     "url": "https://github.com/markwylde/natsable.git"
   },
   "release": {
-    "branches": [
-      "main"
-    ],
+    "branches": ["main"],
     "plugins": [
       "@semantic-release/commit-analyzer",
       "@semantic-release/release-notes-generator",
@@ -55,6 +55,7 @@
     "node-forge": "^1.3.3"
   },
   "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
     "@semantic-release/exec": "^7.1.0",
     "@semantic-release/git": "^10.0.1",
     "@types/express": "^5.0.0",
