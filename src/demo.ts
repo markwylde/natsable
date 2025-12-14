@@ -1,8 +1,18 @@
-import nats, { type ConnectionOptions, type NatsConnection, type JetStreamClient, RetentionPolicy, StorageType, DiscardPolicy, AckPolicy, DeliverPolicy, ReplayPolicy } from 'nats';
+import nats, {
+  type ConnectionOptions,
+  type NatsConnection,
+  type JetStreamClient,
+  RetentionPolicy,
+  StorageType,
+  DiscardPolicy,
+  AckPolicy,
+  DeliverPolicy,
+  ReplayPolicy,
+} from 'nats';
 const { connect, StringCodec, JSONCodec } = nats;
-import { readFileSync } from 'fs';
-import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -25,7 +35,7 @@ try {
       ca: caCert,
       cert: clientCert,
       key: clientKey,
-    }
+    },
   };
   console.log('TLS enabled with client certificate (user1)');
 } catch (err: any) {
@@ -33,11 +43,45 @@ try {
 }
 
 // Demo data generators
-const users = ['alice', 'bob', 'charlie', 'diana', 'eve', 'frank', 'grace', 'henry'];
-const actions = ['login', 'logout', 'purchase', 'view', 'click', 'scroll', 'search', 'share'];
-const products = ['laptop', 'phone', 'tablet', 'headphones', 'keyboard', 'mouse', 'monitor', 'webcam'];
+const users = [
+  'alice',
+  'bob',
+  'charlie',
+  'diana',
+  'eve',
+  'frank',
+  'grace',
+  'henry',
+];
+const actions = [
+  'login',
+  'logout',
+  'purchase',
+  'view',
+  'click',
+  'scroll',
+  'search',
+  'share',
+];
+const products = [
+  'laptop',
+  'phone',
+  'tablet',
+  'headphones',
+  'keyboard',
+  'mouse',
+  'monitor',
+  'webcam',
+];
 const statuses = ['success', 'pending', 'failed', 'processing'];
-const services = ['api-gateway', 'auth-service', 'payment-service', 'inventory', 'notifications', 'analytics'];
+const services = [
+  'api-gateway',
+  'auth-service',
+  'payment-service',
+  'inventory',
+  'notifications',
+  'analytics',
+];
 const levels = ['info', 'warn', 'error', 'debug'];
 
 function randomItem<T>(arr: T[]): T {
@@ -57,8 +101,8 @@ function generateUserEvent() {
     metadata: {
       ip: `192.168.${randomNumber(1, 255)}.${randomNumber(1, 255)}`,
       userAgent: 'Mozilla/5.0 Demo Client',
-      sessionId: `sess-${randomNumber(10000, 99999)}`
-    }
+      sessionId: `sess-${randomNumber(10000, 99999)}`,
+    },
   };
 }
 
@@ -74,7 +118,7 @@ function generateOrderEvent() {
     total: quantity * price,
     currency: 'USD',
     status: randomItem(statuses),
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
   };
 }
 
@@ -85,7 +129,7 @@ function generateLogEvent() {
     message: `Processing request ${randomNumber(1000, 9999)}`,
     traceId: `trace-${randomNumber(100000, 999999)}`,
     duration: randomNumber(1, 500),
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
   };
 }
 
@@ -95,7 +139,7 @@ function generateMetricEvent() {
     metric: randomItem(['cpu', 'memory', 'requests', 'latency', 'errors']),
     value: randomNumber(0, 100),
     unit: randomItem(['percent', 'ms', 'count', 'bytes']),
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
   };
 }
 
@@ -107,7 +151,7 @@ function generateNotification() {
     recipient: `${randomItem(users)}@example.com`,
     subject: `Notification about ${randomItem(products)}`,
     status: randomItem(['sent', 'delivered', 'failed', 'queued']),
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
   };
 }
 
@@ -152,21 +196,71 @@ const streamConfigs: any[] = [
     retention: 'workqueue',
     maxMsgs: 5000,
     storage: 'file',
-  }
+  },
 ];
 
 // JetStream consumer configurations
 const consumerConfigs = [
-  { stream: 'ORDERS', name: 'order-processor', filterSubject: 'orders.created', description: 'Processes new orders' },
-  { stream: 'ORDERS', name: 'order-analytics', filterSubject: 'orders.>', description: 'Analytics on all orders' },
-  { stream: 'ORDERS', name: 'payment-handler', filterSubject: 'orders.payment.>', description: 'Handles payments' },
-  { stream: 'USERS', name: 'user-tracker', filterSubject: 'users.activity.>', description: 'Tracks user activity' },
-  { stream: 'USERS', name: 'auth-monitor', filterSubject: 'users.auth.>', description: 'Monitors authentication' },
-  { stream: 'LOGS', name: 'error-alerter', filterSubject: 'logs.error', description: 'Alerts on errors' },
-  { stream: 'LOGS', name: 'log-archiver', filterSubject: 'logs.>', description: 'Archives all logs' },
-  { stream: 'METRICS', name: 'metrics-aggregator', filterSubject: 'metrics.>', description: 'Aggregates metrics' },
-  { stream: 'NOTIFICATIONS', name: 'email-sender', filterSubject: 'notifications.email', description: 'Sends emails' },
-  { stream: 'NOTIFICATIONS', name: 'push-sender', filterSubject: 'notifications.push', description: 'Sends push notifications' },
+  {
+    stream: 'ORDERS',
+    name: 'order-processor',
+    filterSubject: 'orders.created',
+    description: 'Processes new orders',
+  },
+  {
+    stream: 'ORDERS',
+    name: 'order-analytics',
+    filterSubject: 'orders.>',
+    description: 'Analytics on all orders',
+  },
+  {
+    stream: 'ORDERS',
+    name: 'payment-handler',
+    filterSubject: 'orders.payment.>',
+    description: 'Handles payments',
+  },
+  {
+    stream: 'USERS',
+    name: 'user-tracker',
+    filterSubject: 'users.activity.>',
+    description: 'Tracks user activity',
+  },
+  {
+    stream: 'USERS',
+    name: 'auth-monitor',
+    filterSubject: 'users.auth.>',
+    description: 'Monitors authentication',
+  },
+  {
+    stream: 'LOGS',
+    name: 'error-alerter',
+    filterSubject: 'logs.error',
+    description: 'Alerts on errors',
+  },
+  {
+    stream: 'LOGS',
+    name: 'log-archiver',
+    filterSubject: 'logs.>',
+    description: 'Archives all logs',
+  },
+  {
+    stream: 'METRICS',
+    name: 'metrics-aggregator',
+    filterSubject: 'metrics.>',
+    description: 'Aggregates metrics',
+  },
+  {
+    stream: 'NOTIFICATIONS',
+    name: 'email-sender',
+    filterSubject: 'notifications.email',
+    description: 'Sends emails',
+  },
+  {
+    stream: 'NOTIFICATIONS',
+    name: 'push-sender',
+    filterSubject: 'notifications.push',
+    description: 'Sends push notifications',
+  },
 ];
 
 async function setupJetStream(js: JetStreamClient) {
@@ -185,10 +279,14 @@ async function setupJetStream(js: JetStreamClient) {
         name: config.name,
         subjects: config.subjects,
         description: config.description,
-        retention: config.retention === 'workqueue' ? RetentionPolicy.Workqueue : RetentionPolicy.Limits,
+        retention:
+          config.retention === 'workqueue'
+            ? RetentionPolicy.Workqueue
+            : RetentionPolicy.Limits,
         max_msgs: config.maxMsgs,
         max_age: config.maxAge || 0,
-        storage: config.storage === 'memory' ? StorageType.Memory : StorageType.File,
+        storage:
+          config.storage === 'memory' ? StorageType.Memory : StorageType.File,
         num_replicas: 1,
         discard: DiscardPolicy.Old,
         duplicate_window: 120000000000,
@@ -216,7 +314,9 @@ async function setupJetStream(js: JetStreamClient) {
       console.log(`  Created consumer: ${config.stream}/${config.name}`);
     } catch (err: any) {
       if (!err.message.includes('already exists')) {
-        console.log(`  Consumer ${config.stream}/${config.name}: ${err.message}`);
+        console.log(
+          `  Consumer ${config.stream}/${config.name}: ${err.message}`,
+        );
       }
     }
   }
@@ -226,13 +326,27 @@ async function setupJetStream(js: JetStreamClient) {
 
   for (let i = 0; i < 50; i++) {
     const order = generateOrderEvent();
-    const subSubject = randomItem(['created', 'updated', 'payment.pending', 'payment.completed', 'shipped', 'delivered']);
+    const subSubject = randomItem([
+      'created',
+      'updated',
+      'payment.pending',
+      'payment.completed',
+      'shipped',
+      'delivered',
+    ]);
     await js.publish(`orders.${subSubject}`, jc.encode(order));
   }
 
   for (let i = 0; i < 100; i++) {
     const user = generateUserEvent();
-    const subSubject = randomItem(['activity.view', 'activity.click', 'activity.search', 'auth.login', 'auth.logout', 'profile.update']);
+    const subSubject = randomItem([
+      'activity.view',
+      'activity.click',
+      'activity.search',
+      'auth.login',
+      'auth.logout',
+      'profile.update',
+    ]);
     await js.publish(`users.${subSubject}`, jc.encode(user));
   }
 
@@ -243,7 +357,10 @@ async function setupJetStream(js: JetStreamClient) {
 
   for (let i = 0; i < 150; i++) {
     const metric = generateMetricEvent();
-    await js.publish(`metrics.${metric.service}.${metric.metric}`, jc.encode(metric));
+    await js.publish(
+      `metrics.${metric.service}.${metric.metric}`,
+      jc.encode(metric),
+    );
   }
 
   for (let i = 0; i < 30; i++) {
@@ -312,7 +429,9 @@ async function main() {
   (async () => {
     for await (const msg of logSub) {
       const data: any = jc.decode(msg.data);
-      console.log(`[${msg.subject}] ${data.level.toUpperCase()}: ${data.service} - ${data.message}`);
+      console.log(
+        `[${msg.subject}] ${data.level.toUpperCase()}: ${data.service} - ${data.message}`,
+      );
     }
   })();
 
@@ -332,7 +451,9 @@ async function main() {
   (async () => {
     for await (const msg of timeSub) {
       if (msg.reply) {
-        msg.respond(jc.encode({ time: new Date().toISOString(), timezone: 'UTC' }));
+        msg.respond(
+          jc.encode({ time: new Date().toISOString(), timezone: 'UTC' }),
+        );
       }
     }
   })();
@@ -345,67 +466,104 @@ async function main() {
   const intervals: NodeJS.Timeout[] = [];
 
   // Core NATS pub/sub events
-  intervals.push(setInterval(() => {
-    const event = generateUserEvent();
-    nc.publish(`app.users.${event.action}`, jc.encode(event));
-    eventCount++;
-  }, 500));
+  intervals.push(
+    setInterval(() => {
+      const event = generateUserEvent();
+      nc.publish(`app.users.${event.action}`, jc.encode(event));
+      eventCount++;
+    }, 500),
+  );
 
-  intervals.push(setInterval(() => {
-    const event = generateOrderEvent();
-    nc.publish(`app.orders.${event.status}`, jc.encode(event));
-    eventCount++;
-  }, 2000));
+  intervals.push(
+    setInterval(() => {
+      const event = generateOrderEvent();
+      nc.publish(`app.orders.${event.status}`, jc.encode(event));
+      eventCount++;
+    }, 2000),
+  );
 
-  intervals.push(setInterval(() => {
-    const event = generateLogEvent();
-    nc.publish(`app.logs.${event.service}.${event.level}`, jc.encode(event));
-    eventCount++;
-  }, 300));
+  intervals.push(
+    setInterval(() => {
+      const event = generateLogEvent();
+      nc.publish(`app.logs.${event.service}.${event.level}`, jc.encode(event));
+      eventCount++;
+    }, 300),
+  );
 
   // JetStream events
-  intervals.push(setInterval(async () => {
-    const order = generateOrderEvent();
-    const subSubject = randomItem(['created', 'updated', 'payment.pending', 'payment.completed', 'shipped', 'delivered']);
-    await js.publish(`orders.${subSubject}`, jc.encode(order));
-    eventCount++;
-  }, 2000));
+  intervals.push(
+    setInterval(async () => {
+      const order = generateOrderEvent();
+      const subSubject = randomItem([
+        'created',
+        'updated',
+        'payment.pending',
+        'payment.completed',
+        'shipped',
+        'delivered',
+      ]);
+      await js.publish(`orders.${subSubject}`, jc.encode(order));
+      eventCount++;
+    }, 2000),
+  );
 
-  intervals.push(setInterval(async () => {
-    const user = generateUserEvent();
-    const subSubject = randomItem(['activity.view', 'activity.click', 'activity.search', 'auth.login', 'auth.logout', 'profile.update']);
-    await js.publish(`users.${subSubject}`, jc.encode(user));
-    eventCount++;
-  }, 500));
+  intervals.push(
+    setInterval(async () => {
+      const user = generateUserEvent();
+      const subSubject = randomItem([
+        'activity.view',
+        'activity.click',
+        'activity.search',
+        'auth.login',
+        'auth.logout',
+        'profile.update',
+      ]);
+      await js.publish(`users.${subSubject}`, jc.encode(user));
+      eventCount++;
+    }, 500),
+  );
 
-  intervals.push(setInterval(async () => {
-    const log = generateLogEvent();
-    await js.publish(`logs.${log.level}`, jc.encode(log));
-    eventCount++;
-  }, 300));
+  intervals.push(
+    setInterval(async () => {
+      const log = generateLogEvent();
+      await js.publish(`logs.${log.level}`, jc.encode(log));
+      eventCount++;
+    }, 300),
+  );
 
-  intervals.push(setInterval(async () => {
-    const metric = generateMetricEvent();
-    await js.publish(`metrics.${metric.service}.${metric.metric}`, jc.encode(metric));
-    eventCount++;
-  }, 1000));
+  intervals.push(
+    setInterval(async () => {
+      const metric = generateMetricEvent();
+      await js.publish(
+        `metrics.${metric.service}.${metric.metric}`,
+        jc.encode(metric),
+      );
+      eventCount++;
+    }, 1000),
+  );
 
-  intervals.push(setInterval(async () => {
-    const notifType = randomItem(['email', 'push', 'sms', 'webhook']);
-    const notif = generateNotification();
-    await js.publish(`notifications.${notifType}`, jc.encode(notif));
-    eventCount++;
-  }, 5000));
+  intervals.push(
+    setInterval(async () => {
+      const notifType = randomItem(['email', 'push', 'sms', 'webhook']);
+      const notif = generateNotification();
+      await js.publish(`notifications.${notifType}`, jc.encode(notif));
+      eventCount++;
+    }, 5000),
+  );
 
   // Request/reply every 5s
-  intervals.push(setInterval(async () => {
-    try {
-      await nc.request('app.services.echo', sc.encode('Hello NATS!'), { timeout: 1000 });
-      await nc.request('app.services.time', sc.encode(''), { timeout: 1000 });
-    } catch (err) {
-      // Ignore
-    }
-  }, 5000));
+  intervals.push(
+    setInterval(async () => {
+      try {
+        await nc.request('app.services.echo', sc.encode('Hello NATS!'), {
+          timeout: 1000,
+        });
+        await nc.request('app.services.time', sc.encode(''), { timeout: 1000 });
+      } catch (err) {
+        // Ignore
+      }
+    }, 5000),
+  );
 
   // Stats display
   const statsInterval = setInterval(async () => {
@@ -425,7 +583,7 @@ async function main() {
     console.log('');
     console.log('Shutting down...');
 
-    intervals.forEach(i => clearInterval(i));
+    intervals.forEach((i) => clearInterval(i));
     clearInterval(statsInterval);
 
     for (const sub of subs) {

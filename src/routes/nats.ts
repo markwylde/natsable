@@ -1,8 +1,12 @@
 import express, { type Request, type Response } from 'express';
 const { Router } = express;
-import nats, { type NatsConnection, type JetStreamClient, type ConnectionOptions } from 'nats';
+import nats, {
+  type NatsConnection,
+  type JetStreamClient,
+  type ConnectionOptions,
+} from 'nats';
 const { connect } = nats;
-import { join } from 'path';
+import { join } from 'node:path';
 
 interface Varz {
   server_id: string;
@@ -151,7 +155,12 @@ interface StreamSummary {
   lastSeq: number;
 }
 
-export function createNatsRouter(monitoringUrl: string, natsUrl: string, tlsEnabled: boolean, certsDir: string) {
+export function createNatsRouter(
+  monitoringUrl: string,
+  natsUrl: string,
+  tlsEnabled: boolean,
+  certsDir: string,
+) {
   const router = Router();
   let nc: NatsConnection | null = null;
   let js: JetStreamClient | null = null;
@@ -162,14 +171,16 @@ export function createNatsRouter(monitoringUrl: string, natsUrl: string, tlsEnab
       if (tlsEnabled) {
         // Use TLS with client certificates for mTLS authentication
         // Server uses Let's Encrypt (system CA), client certs are self-signed
-        const serverUrl = natsUrl.startsWith('tls://') ? natsUrl : `tls://${natsUrl}`;
+        const serverUrl = natsUrl.startsWith('tls://')
+          ? natsUrl
+          : `tls://${natsUrl}`;
         const tlsOptions: ConnectionOptions = {
           servers: serverUrl,
           tls: {
             // Client certificates for authentication (self-signed)
             certFile: join(certsDir, 'admin-client.crt'),
             keyFile: join(certsDir, 'admin-client.key'),
-          }
+          },
         };
         nc = await connect(tlsOptions);
       } else {
@@ -193,7 +204,7 @@ export function createNatsRouter(monitoringUrl: string, natsUrl: string, tlsEnab
     } catch (error: any) {
       res.status(503).json({
         error: 'Failed to connect to NATS',
-        message: error.message
+        message: error.message,
       });
     }
   }
@@ -205,11 +216,13 @@ export function createNatsRouter(monitoringUrl: string, natsUrl: string, tlsEnab
   router.get('/connz', async (req, res) => {
     const params = new URLSearchParams();
     if (typeof req.query.subs === 'string') params.set('subs', req.query.subs);
-    if (typeof req.query.limit === 'string') params.set('limit', req.query.limit);
-    if (typeof req.query.offset === 'string') params.set('offset', req.query.offset);
+    if (typeof req.query.limit === 'string')
+      params.set('limit', req.query.limit);
+    if (typeof req.query.offset === 'string')
+      params.set('offset', req.query.offset);
     if (typeof req.query.sort === 'string') params.set('sort', req.query.sort);
     const queryString = params.toString();
-    proxyToNats(`/connz${queryString ? '?' + queryString : ''}`, res);
+    proxyToNats(`/connz${queryString ? `?${queryString}` : ''}`, res);
   });
 
   // Subscription info
@@ -228,12 +241,16 @@ export function createNatsRouter(monitoringUrl: string, natsUrl: string, tlsEnab
   router.get('/jsz', async (req, res) => {
     const params = new URLSearchParams();
     if (typeof req.query.acc === 'string') params.set('acc', req.query.acc);
-    if (typeof req.query.accounts === 'string') params.set('accounts', req.query.accounts);
-    if (typeof req.query.streams === 'string') params.set('streams', req.query.streams);
-    if (typeof req.query.consumers === 'string') params.set('consumers', req.query.consumers);
-    if (typeof req.query.config === 'string') params.set('config', req.query.config);
+    if (typeof req.query.accounts === 'string')
+      params.set('accounts', req.query.accounts);
+    if (typeof req.query.streams === 'string')
+      params.set('streams', req.query.streams);
+    if (typeof req.query.consumers === 'string')
+      params.set('consumers', req.query.consumers);
+    if (typeof req.query.config === 'string')
+      params.set('config', req.query.config);
     const queryString = params.toString();
-    proxyToNats(`/jsz${queryString ? '?' + queryString : ''}`, res);
+    proxyToNats(`/jsz${queryString ? `?${queryString}` : ''}`, res);
   });
 
   // Account info
@@ -248,15 +265,20 @@ export function createNatsRouter(monitoringUrl: string, natsUrl: string, tlsEnab
       const [varzRes, connzRes, jszRes] = await Promise.all([
         fetch(`${monitoringUrl}/varz`),
         fetch(`${monitoringUrl}/connz?sort=bytes_to&limit=10`),
-        fetch(`${monitoringUrl}/jsz?streams=true&consumers=true`)
+        fetch(`${monitoringUrl}/jsz?streams=true&consumers=true`),
       ]);
 
-      const varz = await varzRes.json() as Varz;
-      const connz = await connzRes.json() as Connz;
-      const jsz = await jszRes.json() as Jsz;
+      const varz = (await varzRes.json()) as Varz;
+      const connz = (await connzRes.json()) as Connz;
+      const jsz = (await jszRes.json()) as Jsz;
 
       // Get KV store stats
-      let kvStats: KvStats = { buckets: 0, totalKeys: 0, totalBytes: 0, bucketDetails: [] };
+      const kvStats: KvStats = {
+        buckets: 0,
+        totalKeys: 0,
+        totalBytes: 0,
+        bucketDetails: [],
+      };
       try {
         const { js } = await getNatsConnection();
         if (js) {
@@ -273,7 +295,7 @@ export function createNatsRouter(monitoringUrl: string, natsUrl: string, tlsEnab
                 keys: stream.state.messages || 0,
                 bytes: stream.state.bytes || 0,
                 replicas: stream.config.num_replicas || 1,
-                storage: stream.config.storage
+                storage: stream.config.storage,
               });
             }
           }
@@ -287,7 +309,7 @@ export function createNatsRouter(monitoringUrl: string, natsUrl: string, tlsEnab
       let pendingBytes = 0;
       let pendingMessages = 0;
       if (connz.connections) {
-        connz.connections.forEach(conn => {
+        connz.connections.forEach((conn) => {
           if (conn.slow_consumer) slowConsumers++;
           pendingBytes += conn.pending_bytes || 0;
           pendingMessages += conn.pending_size || 0; // Assuming pending_size based on usage context
@@ -295,20 +317,23 @@ export function createNatsRouter(monitoringUrl: string, natsUrl: string, tlsEnab
       }
 
       // Count streams and get stream details
-      let streamDetails: StreamSummary[] = [];
+      const streamDetails: StreamSummary[] = [];
       if (jsz.account_details) {
-        jsz.account_details.forEach(account => {
+        jsz.account_details.forEach((account) => {
           if (account.stream_detail) {
-            account.stream_detail.forEach(stream => {
+            account.stream_detail.forEach((stream) => {
               // Skip KV streams (they're counted separately)
-              if (!stream.name.startsWith('KV_') && !stream.name.startsWith('OBJ_')) {
+              if (
+                !stream.name.startsWith('KV_') &&
+                !stream.name.startsWith('OBJ_')
+              ) {
                 streamDetails.push({
                   name: stream.name,
                   messages: stream.state?.messages || 0,
                   bytes: stream.state?.bytes || 0,
                   consumers: stream.state?.consumer_count || 0,
                   firstSeq: stream.state?.first_seq || 0,
-                  lastSeq: stream.state?.last_seq || 0
+                  lastSeq: stream.state?.last_seq || 0,
                 });
               }
             });
@@ -333,48 +358,50 @@ export function createNatsRouter(monitoringUrl: string, natsUrl: string, tlsEnab
           slowConsumers: varz.slow_consumers || slowConsumers,
           messages: {
             in: varz.in_msgs,
-            out: varz.out_msgs
+            out: varz.out_msgs,
           },
           bytes: {
             in: varz.in_bytes,
-            out: varz.out_bytes
+            out: varz.out_bytes,
           },
           tls_required: varz.tls_required,
           auth_required: varz.auth_required,
           maxConnections: varz.max_connections,
           maxPayload: varz.max_payload,
           pingInterval: varz.ping_interval,
-          pingMax: varz.ping_max
+          pingMax: varz.ping_max,
         },
         connections: {
           total: connz.num_connections,
           pending: connz.pending,
           pendingBytes: pendingBytes,
           pendingMessages: pendingMessages,
-          list: connz.connections
+          list: connz.connections,
         },
-        jetstream: jsz.config ? {
-          enabled: true,
-          memory: jsz.memory,
-          storage: jsz.storage,
-          reservedMemory: jsz.reserved_memory || 0,
-          reservedStorage: jsz.reserved_storage || 0,
-          streams: jsz.streams,
-          consumers: jsz.consumers,
-          messages: jsz.messages || 0,
-          bytes: jsz.bytes || 0,
-          streamDetails: streamDetails,
-          accounts: jsz.accounts || 1,
-          haAssets: jsz.ha_assets || 0,
-          apiTotal: jsz.api?.total || 0,
-          apiErrors: jsz.api?.errors || 0
-        } : { enabled: false },
-        kv: kvStats
+        jetstream: jsz.config
+          ? {
+              enabled: true,
+              memory: jsz.memory,
+              storage: jsz.storage,
+              reservedMemory: jsz.reserved_memory || 0,
+              reservedStorage: jsz.reserved_storage || 0,
+              streams: jsz.streams,
+              consumers: jsz.consumers,
+              messages: jsz.messages || 0,
+              bytes: jsz.bytes || 0,
+              streamDetails: streamDetails,
+              accounts: jsz.accounts || 1,
+              haAssets: jsz.ha_assets || 0,
+              apiTotal: jsz.api?.total || 0,
+              apiErrors: jsz.api?.errors || 0,
+            }
+          : { enabled: false },
+        kv: kvStats,
       });
     } catch (error: any) {
       res.status(500).json({
         error: 'Failed to get NATS status',
-        message: error.message
+        message: error.message,
       });
     }
   });

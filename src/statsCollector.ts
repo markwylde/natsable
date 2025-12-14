@@ -67,7 +67,10 @@ export class StatsCollector {
     this.collect();
 
     // Set up collection interval
-    this.collectionTimer = setInterval(() => this.collect(), COLLECTION_INTERVAL);
+    this.collectionTimer = setInterval(
+      () => this.collect(),
+      COLLECTION_INTERVAL,
+    );
 
     // Set up cleanup interval to remove old data
     this.cleanupTimer = setInterval(() => this.cleanup(), CLEANUP_INTERVAL);
@@ -94,28 +97,44 @@ export class StatsCollector {
     try {
       const [varzRes, connzRes] = await Promise.all([
         fetch(`${this.monitoringUrl}/varz`),
-        fetch(`${this.monitoringUrl}/connz`)
+        fetch(`${this.monitoringUrl}/connz`),
       ]);
 
       if (!varzRes.ok || !connzRes.ok) {
         return; // Skip this data point if we can't connect
       }
 
-      const varz = await varzRes.json() as VarzResponse;
+      const varz = (await varzRes.json()) as VarzResponse;
       // const connz = await connzRes.json(); // Not used currently?
 
       const now = Date.now();
 
       // Calculate rates (per second) if we have previous data
-      let msgsInRate = 0, msgsOutRate = 0, bytesInRate = 0, bytesOutRate = 0;
+      let msgsInRate = 0;
+      let msgsOutRate = 0;
+      let bytesInRate = 0;
+      let bytesOutRate = 0;
 
       if (this.prevData) {
         const timeDelta = (now - this.prevData.timestamp) / 1000; // seconds
-        if (timeDelta > 0 && timeDelta < 5) { // Only calculate if within reasonable range
-          msgsInRate = Math.max(0, (varz.in_msgs - this.prevData.msgsIn) / timeDelta);
-          msgsOutRate = Math.max(0, (varz.out_msgs - this.prevData.msgsOut) / timeDelta);
-          bytesInRate = Math.max(0, (varz.in_bytes - this.prevData.bytesIn) / timeDelta);
-          bytesOutRate = Math.max(0, (varz.out_bytes - this.prevData.bytesOut) / timeDelta);
+        if (timeDelta > 0 && timeDelta < 5) {
+          // Only calculate if within reasonable range
+          msgsInRate = Math.max(
+            0,
+            (varz.in_msgs - this.prevData.msgsIn) / timeDelta,
+          );
+          msgsOutRate = Math.max(
+            0,
+            (varz.out_msgs - this.prevData.msgsOut) / timeDelta,
+          );
+          bytesInRate = Math.max(
+            0,
+            (varz.in_bytes - this.prevData.bytesIn) / timeDelta,
+          );
+          bytesOutRate = Math.max(
+            0,
+            (varz.out_bytes - this.prevData.bytesOut) / timeDelta,
+          );
         }
       }
 
@@ -125,7 +144,7 @@ export class StatsCollector {
         msgsIn: varz.in_msgs,
         msgsOut: varz.out_msgs,
         bytesIn: varz.in_bytes,
-        bytesOut: varz.out_bytes
+        bytesOut: varz.out_bytes,
       };
 
       // Create data point
@@ -142,7 +161,7 @@ export class StatsCollector {
         bytesInRate: Math.round(bytesInRate),
         bytesOutRate: Math.round(bytesOutRate),
         cpu: varz.cpu || 0,
-        mem: varz.mem || 0
+        mem: varz.mem || 0,
       };
 
       this.dataPoints.push(dataPoint);
@@ -154,7 +173,7 @@ export class StatsCollector {
   cleanup() {
     const cutoff = Date.now() - MAX_AGE_MS;
     const beforeCount = this.dataPoints.length;
-    this.dataPoints = this.dataPoints.filter(dp => dp.timestamp >= cutoff);
+    this.dataPoints = this.dataPoints.filter((dp) => dp.timestamp >= cutoff);
     const removed = beforeCount - this.dataPoints.length;
     if (removed > 0) {
       console.log(`Stats collector: removed ${removed} old data points`);
@@ -167,17 +186,21 @@ export class StatsCollector {
       return this.dataPoints;
     }
 
-    const cutoff = Date.now() - (maxSeconds * 1000);
-    return this.dataPoints.filter(dp => dp.timestamp >= cutoff);
+    const cutoff = Date.now() - maxSeconds * 1000;
+    return this.dataPoints.filter((dp) => dp.timestamp >= cutoff);
   }
 
   // Get summary statistics
   getSummary() {
     return {
       dataPoints: this.dataPoints.length,
-      oldestTimestamp: this.dataPoints.length > 0 ? this.dataPoints[0].timestamp : null,
-      newestTimestamp: this.dataPoints.length > 0 ? this.dataPoints[this.dataPoints.length - 1].timestamp : null,
-      isRunning: this.isRunning
+      oldestTimestamp:
+        this.dataPoints.length > 0 ? this.dataPoints[0].timestamp : null,
+      newestTimestamp:
+        this.dataPoints.length > 0
+          ? this.dataPoints[this.dataPoints.length - 1].timestamp
+          : null,
+      isRunning: this.isRunning,
     };
   }
 }

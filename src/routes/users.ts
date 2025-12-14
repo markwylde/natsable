@@ -1,7 +1,7 @@
 import express, { type Request, type Response } from 'express';
 const { Router } = express;
-import { readFile, writeFile, readdir } from 'fs/promises';
-import { join } from 'path';
+import { readFile, readdir, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 
 interface Permissions {
   publish: string;
@@ -18,7 +18,11 @@ interface ParsedConfig {
   users: NatsUser[];
 }
 
-export function createUsersRouter(configDir: string, certsDir: string, configFile: string = 'nats-server-dev.conf') {
+export function createUsersRouter(
+  configDir: string,
+  certsDir: string,
+  configFile = 'nats-server-dev.conf',
+) {
   const router = Router();
   const configPath = join(configDir, configFile);
 
@@ -62,8 +66,12 @@ export function createUsersRouter(configDir: string, certsDir: string, configFil
             const passwordMatch = block.match(/password\s*:\s*"([^"]+)"/);
 
             // Parse permissions
-            const publishMatch = block.match(/publish\s*:\s*(?:"([^"]+)"|\[([^\]]+)\]|(\>))/);
-            const subscribeMatch = block.match(/subscribe\s*:\s*(?:"([^"]+)"|\[([^\]]+)\]|(\>))/);
+            const publishMatch = block.match(
+              /publish\s*:\s*(?:"([^"]+)"|\[([^\]]+)\]|(\>))/,
+            );
+            const subscribeMatch = block.match(
+              /subscribe\s*:\s*(?:"([^"]+)"|\[([^\]]+)\]|(\>))/,
+            );
 
             if (userMatch && passwordMatch) {
               // Only include users with passwords (password-based auth)
@@ -71,9 +79,19 @@ export function createUsersRouter(configDir: string, certsDir: string, configFil
                 username: userMatch[1],
                 hasPassword: true,
                 permissions: {
-                  publish: publishMatch ? (publishMatch[1] || publishMatch[2] || publishMatch[3] || '') : '',
-                  subscribe: subscribeMatch ? (subscribeMatch[1] || subscribeMatch[2] || subscribeMatch[3] || '') : ''
-                }
+                  publish: publishMatch
+                    ? publishMatch[1] ||
+                      publishMatch[2] ||
+                      publishMatch[3] ||
+                      ''
+                    : '',
+                  subscribe: subscribeMatch
+                    ? subscribeMatch[1] ||
+                      subscribeMatch[2] ||
+                      subscribeMatch[3] ||
+                      ''
+                    : '',
+                },
               });
             }
             blockStart = -1;
@@ -94,13 +112,13 @@ export function createUsersRouter(configDir: string, certsDir: string, configFil
       // Also check for certificate-based users in certs directory
       const certFiles = await readdir(certsDir);
       const certUsers = certFiles
-        .filter(f => f.endsWith('-client.crt'))
-        .map(f => f.replace('-client.crt', ''));
+        .filter((f) => f.endsWith('-client.crt'))
+        .map((f) => f.replace('-client.crt', ''));
 
       res.json({
         passwordUsers: users,
         certificateUsers: certUsers,
-        configFile: configPath
+        configFile: configPath,
       });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
@@ -114,7 +132,7 @@ export function createUsersRouter(configDir: string, certsDir: string, configFil
       const content = await readFile(configPath, 'utf8');
       const { users } = parseNatsConfig(content);
 
-      const user = users.find(u => u.username === username);
+      const user = users.find((u) => u.username === username);
       if (!user) {
         return res.status(404).json({ error: 'User not found' });
       }
@@ -138,24 +156,27 @@ export function createUsersRouter(configDir: string, certsDir: string, configFil
       options: [
         {
           name: 'Certificate-based auth (TLS)',
-          description: 'Use client certificates for authentication. This is managed through the /api/certificates endpoints.',
+          description:
+            'Use client certificates for authentication. This is managed through the /api/certificates endpoints.',
           recommended: true,
-          security: 'high'
+          security: 'high',
         },
         {
           name: 'JWT-based auth with nsc',
-          description: 'Use NATS Security Command (nsc) tool for managing operators, accounts, and users with JWTs.',
+          description:
+            'Use NATS Security Command (nsc) tool for managing operators, accounts, and users with JWTs.',
           recommended: true,
           security: 'high',
-          docs: 'https://docs.nats.io/using-nats/nats-tools/nsc'
+          docs: 'https://docs.nats.io/using-nats/nats-tools/nsc',
         },
         {
           name: 'Password-based auth',
-          description: 'Simple username/password authentication. Less secure but easier to set up.',
+          description:
+            'Simple username/password authentication. Less secure but easier to set up.',
           recommended: false,
-          security: 'medium'
-        }
-      ]
+          security: 'medium',
+        },
+      ],
     });
   });
 
